@@ -1,5 +1,11 @@
 {
   "version": 1,
-  "libraries": [],
+  "libraries": [
+    {
+      "id": "robin-hopper-rvaa",
+      "name": "Robin Hopper",
+      "createdAt": "2026-07-17T23:52:08.313Z"
+    }
+  ],
   "gifs": []
 }
