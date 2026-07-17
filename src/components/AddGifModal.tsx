@@ -24,12 +24,19 @@ const NEW_LIB = '__new__'
 export function AddGifModal({ onClose, editing, defaultLibrary }: Props) {
   const { index, importGif, updateGif, addLibrary } = useStore()
 
+  // When editing a gif whose library no longer exists (e.g. an orphan), fall
+  // back to the first existing library, or to "new" if there are none.
+  const editLibExists = editing ? index.libraries.some((l) => l.id === editing.library) : false
+  const initialLibrary = editing
+    ? editLibExists
+      ? editing.library
+      : index.libraries[0]?.id ?? NEW_LIB
+    : defaultLibrary ?? index.libraries[0]?.id ?? NEW_LIB
+
   const [name, setName] = useState(editing?.name ?? '')
   const [description, setDescription] = useState(editing?.description ?? '')
   const [tagsRaw, setTagsRaw] = useState(editing?.tags.join(', ') ?? '')
-  const [library, setLibrary] = useState(
-    editing?.library ?? defaultLibrary ?? index.libraries[0]?.id ?? NEW_LIB,
-  )
+  const [library, setLibrary] = useState(initialLibrary)
   const [newLibName, setNewLibName] = useState('')
   const [url, setUrl] = useState('')
   const [file, setFile] = useState<File | null>(null)
@@ -43,20 +50,22 @@ export function AddGifModal({ onClose, editing, defaultLibrary }: Props) {
     setBusy(true)
     setError(null)
     try {
-      // Resolve target library (creating one if requested).
-      let libId = library
-      if (!isEdit && library === NEW_LIB) {
-        if (!newLibName.trim()) throw new Error('Name the new library.')
-        setProgress('Creating library…')
-        libId = (await addLibrary(newLibName)).id
-      }
+      const wantNewLib = library === NEW_LIB
+      if (wantNewLib && !newLibName.trim()) throw new Error('Name the new library.')
 
       if (isEdit) {
+        // Two-step here is safe: the store tracks the latest index in a ref, so
+        // updateGif sees the library addLibrary just created.
+        let targetLib = library
+        if (wantNewLib) {
+          setProgress('Creating library…')
+          targetLib = (await addLibrary(newLibName)).id
+        }
         await updateGif(editing!.id, {
           name: name.trim() || editing!.name,
           description,
           tags: parseTags(tagsRaw),
-          library: libId,
+          library: targetLib,
         })
         onClose()
         return
@@ -83,7 +92,8 @@ export function AddGifModal({ onClose, editing, defaultLibrary }: Props) {
         name: name.trim() || undefined,
         description,
         tags: parseTags(tagsRaw),
-        library: libId,
+        library: wantNewLib ? '' : library,
+        newLibraryName: wantNewLib ? newLibName : undefined,
         sourceUrl,
       })
       onClose()
@@ -153,10 +163,10 @@ export function AddGifModal({ onClose, editing, defaultLibrary }: Props) {
                 {l.name}
               </option>
             ))}
-            {!isEdit && <option value={NEW_LIB}>＋ New library…</option>}
+            <option value={NEW_LIB}>＋ New library…</option>
           </select>
         </label>
-        {!isEdit && library === NEW_LIB && (
+        {library === NEW_LIB && (
           <label>
             New library name
             <input value={newLibName} onChange={(e) => setNewLibName(e.target.value)} placeholder="Reactions" />

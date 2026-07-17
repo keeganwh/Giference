@@ -2,6 +2,18 @@
 
 A running log of decisions and changes.
 
+## 2026-07-17 — Bugfix: new library lost when adding a gif
+
+- **Symptom:** creating a new library while adding a gif saved the gif but not
+  the library; it never appeared in the library list or the edit dropdown.
+- **Cause:** the add flow called `addLibrary()` then `importGif()` as two steps,
+  and both read `index` from the same stale React closure. `importGif` rebuilt
+  `index.json` from the pre-library snapshot and overwrote the library.
+- **Fix:** the store now mirrors `index` in a ref updated synchronously, so
+  chained operations see fresh state; and `importGif` creates the new library +
+  gif in a single atomic index write. The edit modal can now also pick/create a
+  library (handles gifs orphaned by the earlier bug).
+
 ## 2026-07-17 — Project kickoff & v1 scaffold
 
 ### Decisions

@@ -26,7 +26,10 @@ export interface ImportInput {
   name?: string
   description: string
   tags: string[]
+  /** Existing library id to add to. Ignored when `newLibraryName` is set. */
   library: string
+  /** When set, a new library is created and the gif is added to it atomically. */
+  newLibraryName?: string
   sourceUrl?: string
 }
 
@@ -58,6 +61,14 @@ function shortId(): string {
   return Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-3)
 }
 
+function makeLibrary(name: string): Library {
+  return {
+    id: slugify(name) + '-' + shortId().slice(0, 4),
+    name: name.trim(),
+    createdAt: new Date().toISOString(),
+  }
+}
+
 function filenameFromUrl(url: string): string {
   try {
     const p = new URL(url).pathname
@@ -74,6 +85,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [localPreviews, setLocalPreviews] = useState<Record<string, string>>({})
   const shaRef = useRef<string | null>(null)
 
+  // Mirror of `index` that updates synchronously. Mutations read from this
+  // rather than the closed-over `index` state, so operations chained within a
+  // single event handler (e.g. create-library-then-add-gif) always build on the
+  // freshest data instead of a stale render snapshot.
+  const indexRef = useRef<LibraryIndex>(EMPTY_INDEX)
+  const applyIndex = useCallback((next: LibraryIndex) => {
+    indexRef.current = next
+    setIndex(next)
+  }, [])
+
   const reload = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -81,21 +102,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (hasToken()) {
         const file = await getFile(INDEX_PATH)
         if (!file) {
-          setIndex(EMPTY_INDEX)
+          applyIndex(EMPTY_INDEX)
           shaRef.current = null
         } else {
-          setIndex(decodeBase64Json(file.content))
+          applyIndex(decodeBase64Json(file.content))
           shaRef.current = file.sha
         }
       } else {
         // No token: read the public copy through raw (cache-busted).
         const cfg = getConfig()
         const res = await fetch(`${rawUrl(cfg, INDEX_PATH)}?t=${Date.now()}`)
-        if (res.ok) {
-          setIndex(await res.json())
-        } else {
-          setIndex(EMPTY_INDEX)
-        }
+        applyIndex(res.ok ? await res.json() : EMPTY_INDEX)
         shaRef.current = null
       }
     } catch (e) {
@@ -103,7 +120,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [applyIndex])
 
   useEffect(() => {
     void reload()
@@ -122,18 +139,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     async (input: ImportInput): Promise<GifRecord> => {
       const bytes = new Uint8Array(await input.blob.arrayBuffer())
       const meta = parseGifMeta(bytes)
+
+      // Resolve the target library against the freshest index, creating a new
+      // one in the same write when requested (atomic — no clobbering race).
+      const current = indexRef.current
+      let libraries = current.libraries
+      let libraryId = input.library
+      if (input.newLibraryName?.trim()) {
+        const lib = makeLibrary(input.newLibraryName)
+        libraries = [...libraries, lib]
+        libraryId = lib.id
+      }
+
       const desiredName =
         input.name?.trim() || (input.sourceUrl ? filenameFromUrl(input.sourceUrl) : 'gif')
       const slug = slugify(desiredName)
       const id = shortId()
 
       // Prefer a clean "name.gif" path; disambiguate with the id on collision.
-      const existingPaths = new Set(index.gifs.map((g) => g.path))
+      const existingPaths = new Set(current.gifs.map((g) => g.path))
       let filename = `${slug}.gif`
-      let path = `gifs/${input.library}/${filename}`
+      let path = `gifs/${libraryId}/${filename}`
       if (existingPaths.has(path)) {
         filename = `${slug}-${id}.gif`
-        path = `gifs/${input.library}/${filename}`
+        path = `gifs/${libraryId}/${filename}`
       }
 
       // Commit the gif itself.
@@ -143,7 +172,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       let thumbPath: string | undefined
       const thumb = await makeThumbnail(input.blob)
       if (thumb) {
-        thumbPath = `thumbs/${input.library}/${filename.replace(/\.gif$/i, '')}.webp`
+        thumbPath = `thumbs/${libraryId}/${filename.replace(/\.gif$/i, '')}.webp`
         await putFile(thumbPath, await blobToBase64(thumb.blob), `Add thumbnail for ${filename}`)
       }
 
@@ -153,7 +182,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         filename,
         path,
         thumbPath,
-        library: input.library,
+        library: libraryId,
         tags: input.tags,
         description: input.description,
         favorite: false,
@@ -166,36 +195,41 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         addedAt: new Date().toISOString(),
       }
 
-      const next: LibraryIndex = { ...index, gifs: [record, ...index.gifs] }
+      // Single atomic index write: new library (if any) + the new gif.
+      const next: LibraryIndex = {
+        ...current,
+        libraries,
+        gifs: [record, ...current.gifs],
+      }
+      applyIndex(next)
       await persist(next, `Add gif: ${record.name}`)
-      setIndex(next)
 
       // Keep a local preview so it shows immediately (before CDN propagation).
       const previewUrl = URL.createObjectURL(input.blob)
       setLocalPreviews((p) => ({ ...p, [id]: previewUrl }))
       return record
     },
-    [index, persist],
+    [applyIndex, persist],
   )
 
   const mutateGifs = useCallback(
     async (map: (g: GifRecord) => GifRecord, message: string) => {
-      const next: LibraryIndex = { ...index, gifs: index.gifs.map(map) }
-      setIndex(next)
+      const next: LibraryIndex = { ...indexRef.current, gifs: indexRef.current.gifs.map(map) }
+      applyIndex(next)
       await persist(next, message)
     },
-    [index, persist],
+    [applyIndex, persist],
   )
 
   const toggleFavorite = useCallback(
     async (id: string) => {
-      const target = index.gifs.find((g) => g.id === id)
+      const target = indexRef.current.gifs.find((g) => g.id === id)
       await mutateGifs(
         (g) => (g.id === id ? { ...g, favorite: !g.favorite } : g),
         `${target?.favorite ? 'Unfavourite' : 'Favourite'}: ${target?.name ?? id}`,
       )
     },
-    [index, mutateGifs],
+    [mutateGifs],
   )
 
   const updateGif = useCallback(
@@ -207,29 +241,31 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const deleteGif = useCallback(
     async (id: string) => {
-      const target = index.gifs.find((g) => g.id === id)
-      const next: LibraryIndex = { ...index, gifs: index.gifs.filter((g) => g.id !== id) }
-      setIndex(next)
+      const target = indexRef.current.gifs.find((g) => g.id === id)
+      const next: LibraryIndex = {
+        ...indexRef.current,
+        gifs: indexRef.current.gifs.filter((g) => g.id !== id),
+      }
+      applyIndex(next)
       // We remove it from the index but leave the file in the repo (cheap, and
       // avoids a second API round-trip). A future "prune" can garbage-collect.
       await persist(next, `Remove gif: ${target?.name ?? id}`)
     },
-    [index, persist],
+    [applyIndex, persist],
   )
 
   const addLibrary = useCallback(
     async (name: string): Promise<Library> => {
-      const lib: Library = {
-        id: slugify(name) + '-' + shortId().slice(0, 4),
-        name: name.trim(),
-        createdAt: new Date().toISOString(),
+      const lib = makeLibrary(name)
+      const next: LibraryIndex = {
+        ...indexRef.current,
+        libraries: [...indexRef.current.libraries, lib],
       }
-      const next: LibraryIndex = { ...index, libraries: [...index.libraries, lib] }
-      setIndex(next)
+      applyIndex(next)
       await persist(next, `Add library: ${lib.name}`)
       return lib
     },
-    [index, persist],
+    [applyIndex, persist],
   )
 
   const value = useMemo<StoreValue>(
