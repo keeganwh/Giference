@@ -1,11 +1,30 @@
 {
   "version": 1,
-  "libraries": [
+  "libraries": [],
+  "gifs": [
     {
-      "id": "robin-hopper-rvaa",
-      "name": "Robin Hopper",
-      "createdAt": "2026-07-17T23:52:08.313Z"
+      "id": "lephuwddr",
+      "name": "Alison Brie Shrugs",
+      "filename": "alison-brie-shrugs.gif",
+      "path": "gifs/robin-hopper-rvaa/alison-brie-shrugs.gif",
+      "thumbPath": "thumbs/robin-hopper-rvaa/alison-brie-shrugs.webp",
+      "library": "robin-hopper-rvaa",
+      "tags": [
+        "alison brie",
+        "robin hopper",
+        "reactions",
+        "wordless",
+        "sarcasm"
+      ],
+      "description": "Alison Brie gives a knowing shrug of ironic acceptance",
+      "favorite": false,
+      "durationMs": 2990,
+      "frameCount": 23,
+      "width": 450,
+      "height": 286,
+      "bytes": 1445494,
+      "sourceUrl": "https://media.giphy.com/media/jB7FNZdwGJRaeRxNxV/giphy.gif?cid=ecf05e477cf8442d168f6bda339ddef3a1033cda407def0b&ep=v1_user_favorites&rid=giphy.gif&ct=g",
+      "addedAt": "2026-07-17T23:52:12.925Z"
     }
-  ],
-  "gifs": []
+  ]
 }
