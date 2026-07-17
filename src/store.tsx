@@ -1,0 +1,258 @@
+// Central data store: loads the library index from the repo, exposes it to the
+// app via React context, and persists mutations back to GitHub. Also owns the
+// "import a gif" pipeline (thumbnail + metadata + committing files).
+
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
+import { EMPTY_INDEX, type GifRecord, type Library, type LibraryIndex } from './types'
+import { getConfig, getFile, getSha, hasToken, putFile } from './lib/github'
+import { rawUrl } from './lib/urls'
+import { blobToBase64, slugify, toBase64 } from './lib/bytes'
+import { parseGifMeta } from './lib/gifmeta'
+import { makeThumbnail } from './lib/thumbnail'
+
+const INDEX_PATH = 'data/index.json'
+
+export interface ImportInput {
+  blob: Blob
+  name?: string
+  description: string
+  tags: string[]
+  library: string
+  sourceUrl?: string
+}
+
+interface StoreValue {
+  index: LibraryIndex
+  loading: boolean
+  error: string | null
+  /** Object URLs for gifs added this session, so they preview before CDN sync. */
+  localPreviews: Record<string, string>
+  reload: () => Promise<void>
+  importGif: (input: ImportInput) => Promise<GifRecord>
+  toggleFavorite: (id: string) => Promise<void>
+  updateGif: (id: string, patch: Partial<GifRecord>) => Promise<void>
+  deleteGif: (id: string) => Promise<void>
+  addLibrary: (name: string) => Promise<Library>
+}
+
+const StoreContext = createContext<StoreValue | null>(null)
+
+function decodeBase64Json(content: string): LibraryIndex {
+  const clean = content.replace(/\s/g, '')
+  const bin = atob(clean)
+  const bytes = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+  return JSON.parse(new TextDecoder().decode(bytes))
+}
+
+function shortId(): string {
+  return Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-3)
+}
+
+function filenameFromUrl(url: string): string {
+  try {
+    const p = new URL(url).pathname
+    return decodeURIComponent(p.split('/').pop() || 'gif')
+  } catch {
+    return 'gif'
+  }
+}
+
+export function StoreProvider({ children }: { children: ReactNode }) {
+  const [index, setIndex] = useState<LibraryIndex>(EMPTY_INDEX)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [localPreviews, setLocalPreviews] = useState<Record<string, string>>({})
+  const shaRef = useRef<string | null>(null)
+
+  const reload = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      if (hasToken()) {
+        const file = await getFile(INDEX_PATH)
+        if (!file) {
+          setIndex(EMPTY_INDEX)
+          shaRef.current = null
+        } else {
+          setIndex(decodeBase64Json(file.content))
+          shaRef.current = file.sha
+        }
+      } else {
+        // No token: read the public copy through raw (cache-busted).
+        const cfg = getConfig()
+        const res = await fetch(`${rawUrl(cfg, INDEX_PATH)}?t=${Date.now()}`)
+        if (res.ok) {
+          setIndex(await res.json())
+        } else {
+          setIndex(EMPTY_INDEX)
+        }
+        shaRef.current = null
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void reload()
+  }, [reload])
+
+  // Persist the given index to the repo, refreshing the sha to avoid conflicts.
+  const persist = useCallback(async (next: LibraryIndex, message: string) => {
+    const sha = shaRef.current ?? (await getSha(INDEX_PATH))
+    const base64 = toBase64(new TextEncoder().encode(JSON.stringify(next, null, 2)))
+    await putFile(INDEX_PATH, base64, message, sha)
+    // The put response sha isn't captured here; refresh lazily on next save.
+    shaRef.current = null
+  }, [])
+
+  const importGif = useCallback(
+    async (input: ImportInput): Promise<GifRecord> => {
+      const bytes = new Uint8Array(await input.blob.arrayBuffer())
+      const meta = parseGifMeta(bytes)
+      const desiredName =
+        input.name?.trim() || (input.sourceUrl ? filenameFromUrl(input.sourceUrl) : 'gif')
+      const slug = slugify(desiredName)
+      const id = shortId()
+
+      // Prefer a clean "name.gif" path; disambiguate with the id on collision.
+      const existingPaths = new Set(index.gifs.map((g) => g.path))
+      let filename = `${slug}.gif`
+      let path = `gifs/${input.library}/${filename}`
+      if (existingPaths.has(path)) {
+        filename = `${slug}-${id}.gif`
+        path = `gifs/${input.library}/${filename}`
+      }
+
+      // Commit the gif itself.
+      await putFile(path, await blobToBase64(input.blob), `Add gif ${filename}`)
+
+      // Best-effort thumbnail.
+      let thumbPath: string | undefined
+      const thumb = await makeThumbnail(input.blob)
+      if (thumb) {
+        thumbPath = `thumbs/${input.library}/${filename.replace(/\.gif$/i, '')}.webp`
+        await putFile(thumbPath, await blobToBase64(thumb.blob), `Add thumbnail for ${filename}`)
+      }
+
+      const record: GifRecord = {
+        id,
+        name: input.name?.trim() || slug,
+        filename,
+        path,
+        thumbPath,
+        library: input.library,
+        tags: input.tags,
+        description: input.description,
+        favorite: false,
+        durationMs: meta?.durationMs,
+        frameCount: meta?.frameCount,
+        width: meta?.width,
+        height: meta?.height,
+        bytes: bytes.length,
+        sourceUrl: input.sourceUrl,
+        addedAt: new Date().toISOString(),
+      }
+
+      const next: LibraryIndex = { ...index, gifs: [record, ...index.gifs] }
+      await persist(next, `Add gif: ${record.name}`)
+      setIndex(next)
+
+      // Keep a local preview so it shows immediately (before CDN propagation).
+      const previewUrl = URL.createObjectURL(input.blob)
+      setLocalPreviews((p) => ({ ...p, [id]: previewUrl }))
+      return record
+    },
+    [index, persist],
+  )
+
+  const mutateGifs = useCallback(
+    async (map: (g: GifRecord) => GifRecord, message: string) => {
+      const next: LibraryIndex = { ...index, gifs: index.gifs.map(map) }
+      setIndex(next)
+      await persist(next, message)
+    },
+    [index, persist],
+  )
+
+  const toggleFavorite = useCallback(
+    async (id: string) => {
+      const target = index.gifs.find((g) => g.id === id)
+      await mutateGifs(
+        (g) => (g.id === id ? { ...g, favorite: !g.favorite } : g),
+        `${target?.favorite ? 'Unfavourite' : 'Favourite'}: ${target?.name ?? id}`,
+      )
+    },
+    [index, mutateGifs],
+  )
+
+  const updateGif = useCallback(
+    async (id: string, patch: Partial<GifRecord>) => {
+      await mutateGifs((g) => (g.id === id ? { ...g, ...patch } : g), `Edit gif: ${id}`)
+    },
+    [mutateGifs],
+  )
+
+  const deleteGif = useCallback(
+    async (id: string) => {
+      const target = index.gifs.find((g) => g.id === id)
+      const next: LibraryIndex = { ...index, gifs: index.gifs.filter((g) => g.id !== id) }
+      setIndex(next)
+      // We remove it from the index but leave the file in the repo (cheap, and
+      // avoids a second API round-trip). A future "prune" can garbage-collect.
+      await persist(next, `Remove gif: ${target?.name ?? id}`)
+    },
+    [index, persist],
+  )
+
+  const addLibrary = useCallback(
+    async (name: string): Promise<Library> => {
+      const lib: Library = {
+        id: slugify(name) + '-' + shortId().slice(0, 4),
+        name: name.trim(),
+        createdAt: new Date().toISOString(),
+      }
+      const next: LibraryIndex = { ...index, libraries: [...index.libraries, lib] }
+      setIndex(next)
+      await persist(next, `Add library: ${lib.name}`)
+      return lib
+    },
+    [index, persist],
+  )
+
+  const value = useMemo<StoreValue>(
+    () => ({
+      index,
+      loading,
+      error,
+      localPreviews,
+      reload,
+      importGif,
+      toggleFavorite,
+      updateGif,
+      deleteGif,
+      addLibrary,
+    }),
+    [index, loading, error, localPreviews, reload, importGif, toggleFavorite, updateGif, deleteGif, addLibrary],
+  )
+
+  return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>
+}
+
+export function useStore(): StoreValue {
+  const ctx = useContext(StoreContext)
+  if (!ctx) throw new Error('useStore must be used within StoreProvider')
+  return ctx
+}
