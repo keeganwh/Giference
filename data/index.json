@@ -9,6 +9,30 @@
   ],
   "gifs": [
     {
+      "id": "std3g58sg",
+      "name": "Alison Brie - \"Shut Up\"",
+      "filename": "alison-brie-shut-up.gif",
+      "path": "gifs/robin-hopper-reacts-st7u/alison-brie-shut-up.gif",
+      "thumbPath": "thumbs/robin-hopper-reacts-st7u/alison-brie-shut-up.webp",
+      "library": "robin-hopper-reacts-st7u",
+      "tags": [
+        "alison brie",
+        "reaction",
+        "sarcasm",
+        "laugh",
+        "bossy"
+      ],
+      "description": "Alison Brie laughs and then says \"shut up\"",
+      "favorite": false,
+      "durationMs": 2650,
+      "frameCount": 53,
+      "width": 444,
+      "height": 250,
+      "bytes": 3738586,
+      "sourceUrl": "https://media.giphy.com/media/RRY1GGOBaDYP4a04LE/giphy.gif?cid=ecf05e47a5db243669dc9d793c9d437c352e164a5ca17183&ep=v1_user_favorites&rid=giphy.gif&ct=g",
+      "addedAt": "2026-07-18T00:17:47.748Z"
+    },
+    {
       "id": "2tkrb76zn",
       "name": "Alison Brie Nods Sarcastically",
       "filename": "alison-brie-nods-sarcastically.gif",
