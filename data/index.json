@@ -23,7 +23,7 @@
         "agreement"
       ],
       "description": "Alison Brie nods in sarcastic / uncertain agreement",
-      "favorite": false,
+      "favorite": true,
       "durationMs": 2000,
       "frameCount": 40,
       "width": 250,
