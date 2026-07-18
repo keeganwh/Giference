@@ -9,6 +9,28 @@
   ],
   "gifs": [
     {
+      "id": "xov0j6e1y",
+      "name": "Alison Brie Is Shocked",
+      "filename": "alison-brie-is-shocked.gif",
+      "path": "gifs/robin-hopper-reacts-st7u/alison-brie-is-shocked.gif",
+      "thumbPath": "thumbs/robin-hopper-reacts-st7u/alison-brie-is-shocked.webp",
+      "library": "robin-hopper-reacts-st7u",
+      "tags": [
+        "alison brie",
+        "reaction",
+        "shock"
+      ],
+      "description": "Alison Brie turns with a look of aghast shock",
+      "favorite": false,
+      "durationMs": 1750,
+      "frameCount": 25,
+      "width": 284,
+      "height": 284,
+      "bytes": 995418,
+      "sourceUrl": "https://media.giphy.com/media/H58tq6uvJ1Yb1GvZy8/giphy.gif?cid=ecf05e477cf8442d168f6bda339ddef3a1033cda407def0b&ep=v1_user_favorites&rid=giphy.gif&ct=g",
+      "addedAt": "2026-07-18T00:19:26.626Z"
+    },
+    {
       "id": "std3g58sg",
       "name": "Alison Brie - \"Shut Up\"",
       "filename": "alison-brie-shut-up.gif",
@@ -23,7 +45,7 @@
         "bossy"
       ],
       "description": "Alison Brie laughs and then says \"shut up\"",
-      "favorite": false,
+      "favorite": true,
       "durationMs": 2650,
       "frameCount": 53,
       "width": 444,
