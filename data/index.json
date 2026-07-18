@@ -21,7 +21,7 @@
         "shock"
       ],
       "description": "Alison Brie turns with a look of aghast shock",
-      "favorite": false,
+      "favorite": true,
       "durationMs": 1750,
       "frameCount": 25,
       "width": 284,
