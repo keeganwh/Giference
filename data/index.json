@@ -1,5 +1,36 @@
 {
   "version": 1,
-  "libraries": [],
-  "gifs": []
+  "libraries": [
+    {
+      "id": "robin-hopper-reacts-st7u",
+      "name": "Robin Hopper Reacts",
+      "createdAt": "2026-07-18T00:16:08.099Z"
+    }
+  ],
+  "gifs": [
+    {
+      "id": "2tkrb76zn",
+      "name": "Alison Brie Nods Sarcastically",
+      "filename": "alison-brie-nods-sarcastically.gif",
+      "path": "gifs/robin-hopper-reacts-st7u/alison-brie-nods-sarcastically.gif",
+      "thumbPath": "thumbs/robin-hopper-reacts-st7u/alison-brie-nods-sarcastically.webp",
+      "library": "robin-hopper-reacts-st7u",
+      "tags": [
+        "alison brie",
+        "reaction",
+        "sarcasm",
+        "uncertain",
+        "agreement"
+      ],
+      "description": "Alison Brie nods in sarcastic / uncertain agreement",
+      "favorite": false,
+      "durationMs": 2000,
+      "frameCount": 40,
+      "width": 250,
+      "height": 310,
+      "bytes": 1914179,
+      "sourceUrl": "https://media.giphy.com/media/sAu6Ki8uKCzcrkRJ5X/giphy.gif?cid=ecf05e47a5db243669dc9d793c9d437c352e164a5ca17183&ep=v1_user_favorites&rid=giphy.gif&ct=g",
+      "addedAt": "2026-07-18T00:16:11.202Z"
+    }
+  ]
 }
