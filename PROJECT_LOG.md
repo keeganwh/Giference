@@ -2,6 +2,21 @@
 
 A running log of decisions and changes.
 
+## 2026-07-18 — Faster refresh + save feedback
+
+- **Refresh delay (~1 min):** a fresh page load re-read `index.json` via the
+  branch ref, which GitHub serves from an eventually-consistent cache. Now we
+  read the **head commit sha** first and read the file at that immutable sha
+  (+ `Cache-Control: no-cache`), so changes appear on refresh almost instantly.
+- **Instant paint:** the last-seen index is cached in `localStorage` and shown
+  immediately on load while the fresh read reconciles in the background.
+- **In-session is already immediate:** adds/deletes update the on-screen list
+  from memory — no refresh needed. (Refreshing was what surfaced the delay.)
+- **Save feedback:** a "● Saving… / ✓ Saved" pill in the header plus a manual
+  ↻ refresh button, so it's clear when a change has actually committed.
+- **Image freshness:** cards fall back from jsDelivr to the always-fresh raw
+  URL if a just-added file isn't mirrored on the CDN yet.
+
 ## 2026-07-17 — Bugfix: new library lost when adding a gif
 
 - **Symptom:** creating a new library while adding a gif saved the gif but not

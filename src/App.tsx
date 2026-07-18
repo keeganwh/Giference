@@ -16,7 +16,7 @@ type View =
 const TOOLS_URL = 'https://gif.totakit.com/tools'
 
 export default function App() {
-  const { index, loading, error, localPreviews } = useStore()
+  const { index, loading, saving, error, localPreviews, reload } = useStore()
   const [view, setView] = useState<View>({ t: 'index' })
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS)
   const [showAdd, setShowAdd] = useState(false)
@@ -49,10 +49,16 @@ export default function App() {
         <button className="brand" onClick={() => go({ t: 'index' })}>
           🎞️ GIFerence
         </button>
+        <span className={`save-pill ${saving ? 'busy' : 'idle'}`}>
+          {saving ? '● Saving…' : '✓ Saved'}
+        </span>
         <div className="spacer" />
         <a className="ghost" href={TOOLS_URL} target="_blank" rel="noreferrer">
           GIF tools ↗
         </a>
+        <button className="ghost" title="Refresh from repo" disabled={saving} onClick={() => void reload()}>
+          ↻
+        </button>
         <button className="ghost" onClick={() => setShowSettings(true)}>
           Settings
         </button>

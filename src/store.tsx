@@ -13,7 +13,7 @@ import {
   type ReactNode,
 } from 'react'
 import { EMPTY_INDEX, type GifRecord, type Library, type LibraryIndex } from './types'
-import { getConfig, getFile, getSha, hasToken, putFile } from './lib/github'
+import { getConfig, getFile, getHeadSha, getSha, hasToken, putFile } from './lib/github'
 import { rawUrl } from './lib/urls'
 import { blobToBase64, slugify, toBase64 } from './lib/bytes'
 import { parseGifMeta } from './lib/gifmeta'
@@ -36,6 +36,8 @@ export interface ImportInput {
 interface StoreValue {
   index: LibraryIndex
   loading: boolean
+  /** True while a change is being committed to the repo. */
+  saving: boolean
   error: string | null
   /** Object URLs for gifs added this session, so they preview before CDN sync. */
   localPreviews: Record<string, string>
@@ -69,6 +71,32 @@ function makeLibrary(name: string): Library {
   }
 }
 
+// A local snapshot of the last index we saw, for instant paint on refresh
+// while the fresh server read is in flight. Keyed by repo so switching repos
+// doesn't show stale data.
+const CACHE_KEY = 'giference.cache'
+function cacheId(): string {
+  const c = getConfig()
+  return `${c.owner}/${c.repo}@${c.branch}`
+}
+function loadCache(): LibraryIndex | null {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    return parsed.id === cacheId() ? (parsed.index as LibraryIndex) : null
+  } catch {
+    return null
+  }
+}
+function saveCache(index: LibraryIndex): void {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ id: cacheId(), index }))
+  } catch {
+    /* quota — non-fatal */
+  }
+}
+
 function filenameFromUrl(url: string): string {
   try {
     const p = new URL(url).pathname
@@ -81,6 +109,7 @@ function filenameFromUrl(url: string): string {
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [index, setIndex] = useState<LibraryIndex>(EMPTY_INDEX)
   const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [localPreviews, setLocalPreviews] = useState<Record<string, string>>({})
   const shaRef = useRef<string | null>(null)
@@ -93,14 +122,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const applyIndex = useCallback((next: LibraryIndex) => {
     indexRef.current = next
     setIndex(next)
+    saveCache(next)
   }, [])
 
   const reload = useCallback(async () => {
-    setLoading(true)
     setError(null)
+    // Instant paint from the local snapshot (our own writes are the freshest
+    // truth for this device); the fresh server read below reconciles it.
+    const cached = loadCache()
+    if (cached) {
+      applyIndex(cached)
+      setLoading(false)
+    } else {
+      setLoading(true)
+    }
     try {
       if (hasToken()) {
-        const file = await getFile(INDEX_PATH)
+        // Read at the head commit sha, which is strongly consistent, instead of
+        // the branch ref (cached/eventually-consistent) — this is what removes
+        // the ~minute delay before a change shows up on refresh.
+        const head = await getHeadSha()
+        const file = await getFile(INDEX_PATH, head ?? undefined)
         if (!file) {
           applyIndex(EMPTY_INDEX)
           shaRef.current = null
@@ -116,7 +158,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         shaRef.current = null
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      // A transient read error shouldn't blow away a good cached view.
+      if (!cached) setError(e instanceof Error ? e.message : String(e))
     } finally {
       setLoading(false)
     }
@@ -135,8 +178,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     shaRef.current = null
   }, [])
 
+  // Wrap a write so the UI can show a "Saving…/Saved" state.
+  const withSaving = useCallback(async <T,>(fn: () => Promise<T>): Promise<T> => {
+    setSaving(true)
+    try {
+      return await fn()
+    } finally {
+      setSaving(false)
+    }
+  }, [])
+
   const importGif = useCallback(
-    async (input: ImportInput): Promise<GifRecord> => {
+    (input: ImportInput): Promise<GifRecord> =>
+      withSaving(async () => {
       const bytes = new Uint8Array(await input.blob.arrayBuffer())
       const meta = parseGifMeta(bytes)
 
@@ -208,17 +262,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const previewUrl = URL.createObjectURL(input.blob)
       setLocalPreviews((p) => ({ ...p, [id]: previewUrl }))
       return record
-    },
-    [applyIndex, persist],
+      }),
+    [applyIndex, persist, withSaving],
   )
 
   const mutateGifs = useCallback(
-    async (map: (g: GifRecord) => GifRecord, message: string) => {
-      const next: LibraryIndex = { ...indexRef.current, gifs: indexRef.current.gifs.map(map) }
-      applyIndex(next)
-      await persist(next, message)
-    },
-    [applyIndex, persist],
+    (map: (g: GifRecord) => GifRecord, message: string) =>
+      withSaving(async () => {
+        const next: LibraryIndex = { ...indexRef.current, gifs: indexRef.current.gifs.map(map) }
+        applyIndex(next)
+        await persist(next, message)
+      }),
+    [applyIndex, persist, withSaving],
   )
 
   const toggleFavorite = useCallback(
@@ -240,38 +295,41 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   )
 
   const deleteGif = useCallback(
-    async (id: string) => {
-      const target = indexRef.current.gifs.find((g) => g.id === id)
-      const next: LibraryIndex = {
-        ...indexRef.current,
-        gifs: indexRef.current.gifs.filter((g) => g.id !== id),
-      }
-      applyIndex(next)
-      // We remove it from the index but leave the file in the repo (cheap, and
-      // avoids a second API round-trip). A future "prune" can garbage-collect.
-      await persist(next, `Remove gif: ${target?.name ?? id}`)
-    },
-    [applyIndex, persist],
+    (id: string) =>
+      withSaving(async () => {
+        const target = indexRef.current.gifs.find((g) => g.id === id)
+        const next: LibraryIndex = {
+          ...indexRef.current,
+          gifs: indexRef.current.gifs.filter((g) => g.id !== id),
+        }
+        applyIndex(next)
+        // We remove it from the index but leave the file in the repo (cheap, and
+        // avoids a second API round-trip). A future "prune" can garbage-collect.
+        await persist(next, `Remove gif: ${target?.name ?? id}`)
+      }),
+    [applyIndex, persist, withSaving],
   )
 
   const addLibrary = useCallback(
-    async (name: string): Promise<Library> => {
-      const lib = makeLibrary(name)
-      const next: LibraryIndex = {
-        ...indexRef.current,
-        libraries: [...indexRef.current.libraries, lib],
-      }
-      applyIndex(next)
-      await persist(next, `Add library: ${lib.name}`)
-      return lib
-    },
-    [applyIndex, persist],
+    (name: string): Promise<Library> =>
+      withSaving(async () => {
+        const lib = makeLibrary(name)
+        const next: LibraryIndex = {
+          ...indexRef.current,
+          libraries: [...indexRef.current.libraries, lib],
+        }
+        applyIndex(next)
+        await persist(next, `Add library: ${lib.name}`)
+        return lib
+      }),
+    [applyIndex, persist, withSaving],
   )
 
   const value = useMemo<StoreValue>(
     () => ({
       index,
       loading,
+      saving,
       error,
       localPreviews,
       reload,
@@ -281,7 +339,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       deleteGif,
       addLibrary,
     }),
-    [index, loading, error, localPreviews, reload, importGif, toggleFavorite, updateGif, deleteGif, addLibrary],
+    [index, loading, saving, error, localPreviews, reload, importGif, toggleFavorite, updateGif, deleteGif, addLibrary],
   )
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>

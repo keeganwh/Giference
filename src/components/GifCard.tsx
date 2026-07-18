@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { GifRecord } from '../types'
 import { useStore } from '../store'
-import { copyUrl, gifUrl, thumbUrl } from '../lib/display'
+import { copyUrl, gifUrl, rawGifUrl, rawThumbUrl, thumbUrl } from '../lib/display'
 import { formatDuration } from '../lib/gifmeta'
 
 interface Props {
@@ -14,10 +14,20 @@ export function GifCard({ gif, onEdit, onTagClick }: Props) {
   const { localPreviews, toggleFavorite, deleteGif } = useStore()
   const [hover, setHover] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [imgFailed, setImgFailed] = useState(false)
 
   // Show the animated gif on hover; a static thumbnail otherwise (keeps grids
   // light). Fresh uploads only have a local preview, so always animate those.
-  const src = hover || localPreviews[gif.id] ? gifUrl(gif, localPreviews) : thumbUrl(gif, localPreviews)
+  const animate = hover || !!localPreviews[gif.id]
+  // Prefer the jsDelivr CDN; if it 404s (e.g. a just-added file not yet
+  // mirrored), fall back to the always-fresh raw URL.
+  const src = imgFailed
+    ? animate
+      ? rawGifUrl(gif, localPreviews)
+      : rawThumbUrl(gif, localPreviews)
+    : animate
+      ? gifUrl(gif, localPreviews)
+      : thumbUrl(gif, localPreviews)
 
   const onCopy = async () => {
     try {
@@ -36,7 +46,12 @@ export function GifCard({ gif, onEdit, onTagClick }: Props) {
       onMouseLeave={() => setHover(false)}
     >
       <div className="gif-thumb">
-        <img src={src} alt={gif.name} loading="lazy" />
+        <img
+          src={src}
+          alt={gif.name}
+          loading="lazy"
+          onError={() => setImgFailed(true)}
+        />
         <button
           className={`fav-btn ${gif.favorite ? 'on' : ''}`}
           title={gif.favorite ? 'Unfavourite' : 'Favourite'}

@@ -68,17 +68,34 @@ interface ContentsFile {
   content: string // base64, may contain newlines
 }
 
-/** Fetch a file's base64 content + sha, or null if it doesn't exist yet. */
-export async function getFile(path: string): Promise<ContentsFile | null> {
+/**
+ * Fetch a file's base64 content + sha, or null if it doesn't exist yet.
+ * Pass an explicit `ref` (e.g. a commit sha) to read at an immutable point —
+ * reading at the head commit sha avoids the branch-level cache staleness that
+ * makes a just-committed change take up to a minute to appear.
+ */
+export async function getFile(path: string, ref?: string): Promise<ContentsFile | null> {
   const cfg = getConfig()
   const url = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${encodeURIComponent(
     path,
-  ).replace(/%2F/g, '/')}?ref=${encodeURIComponent(cfg.branch)}`
-  const res = await fetch(url, { headers: authHeaders() })
+  ).replace(/%2F/g, '/')}?ref=${encodeURIComponent(ref ?? cfg.branch)}`
+  const res = await fetch(url, { headers: { ...authHeaders(), 'Cache-Control': 'no-cache' } })
   if (res.status === 404) return null
   if (!res.ok) throw new Error(`GitHub getFile ${path} failed: ${res.status} ${await res.text()}`)
   const json = await res.json()
   return { sha: json.sha, content: json.content }
+}
+
+/** The head commit sha of the configured branch. Strongly consistent. */
+export async function getHeadSha(): Promise<string | null> {
+  const cfg = getConfig()
+  const url = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/git/ref/heads/${encodeURIComponent(
+    cfg.branch,
+  )}`
+  const res = await fetch(url, { headers: { ...authHeaders(), 'Cache-Control': 'no-cache' } })
+  if (!res.ok) return null
+  const json = await res.json()
+  return json.object?.sha ?? null
 }
 
 /** Get just the current sha for a path (needed to update an existing file). */
