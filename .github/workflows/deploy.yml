@@ -3,6 +3,14 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [main]
+    # Content the app writes at runtime (gifs, thumbnails, the metadata index)
+    # is fetched live and isn't bundled into the site, so those commits don't
+    # need a rebuild. Only redeploy when the app code/config actually changes.
+    paths-ignore:
+      - 'data/**'
+      - 'gifs/**'
+      - 'thumbs/**'
+      - 'PROJECT_LOG.md'
   workflow_dispatch:
 
 # Allow the workflow to publish to Pages.
