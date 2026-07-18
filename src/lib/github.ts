@@ -79,7 +79,10 @@ export async function getFile(path: string, ref?: string): Promise<ContentsFile 
   const url = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/contents/${encodeURIComponent(
     path,
   ).replace(/%2F/g, '/')}?ref=${encodeURIComponent(ref ?? cfg.branch)}`
-  const res = await fetch(url, { headers: { ...authHeaders(), 'Cache-Control': 'no-cache' } })
+  // Reading at an immutable commit sha (see reload) is already fresh; we avoid a
+  // Cache-Control request header because it's not CORS-safelisted and would
+  // trigger a preflight GitHub rejects ("Failed to fetch").
+  const res = await fetch(url, { headers: authHeaders() })
   if (res.status === 404) return null
   if (!res.ok) throw new Error(`GitHub getFile ${path} failed: ${res.status} ${await res.text()}`)
   const json = await res.json()
@@ -92,7 +95,7 @@ export async function getHeadSha(): Promise<string | null> {
   const url = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}/git/ref/heads/${encodeURIComponent(
     cfg.branch,
   )}`
-  const res = await fetch(url, { headers: { ...authHeaders(), 'Cache-Control': 'no-cache' } })
+  const res = await fetch(url, { headers: authHeaders() })
   if (!res.ok) return null
   const json = await res.json()
   return json.object?.sha ?? null
