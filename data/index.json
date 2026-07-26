@@ -9,6 +9,30 @@
   ],
   "gifs": [
     {
+      "id": "8lnvxmfvu",
+      "name": "Alison Brie Smiles Subtly",
+      "filename": "alison-brie-smiles-subtly.gif",
+      "path": "gifs/robin-hopper-reacts-st7u/alison-brie-smiles-subtly.gif",
+      "thumbPath": "thumbs/robin-hopper-reacts-st7u/alison-brie-smiles-subtly.webp",
+      "library": "robin-hopper-reacts-st7u",
+      "tags": [
+        "alison brie",
+        "reaction",
+        "smile",
+        "happy",
+        "subtle"
+      ],
+      "description": "Alison Brie smiles subtly",
+      "favorite": false,
+      "durationMs": 2800,
+      "frameCount": 23,
+      "width": 348,
+      "height": 348,
+      "bytes": 1028523,
+      "sourceUrl": "https://media.giphy.com/media/4cCYskgVRAZsCbtHg8/giphy.gif",
+      "addedAt": "2026-07-26T18:29:49.907Z"
+    },
+    {
       "id": "xov0j6e1y",
       "name": "Alison Brie Is Shocked",
       "filename": "alison-brie-is-shocked.gif",
