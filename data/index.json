@@ -9,6 +9,30 @@
   ],
   "gifs": [
     {
+      "id": "q34u8a19w",
+      "name": "Alison Brie Happy Birthday",
+      "filename": "alison-brie-happy-birthday.gif",
+      "path": "gifs/robin-hopper-reacts-st7u/alison-brie-happy-birthday.gif",
+      "thumbPath": "thumbs/robin-hopper-reacts-st7u/alison-brie-happy-birthday.webp",
+      "library": "robin-hopper-reacts-st7u",
+      "tags": [
+        "alison brie",
+        "clap",
+        "happy",
+        "specific",
+        "messages"
+      ],
+      "description": "Happy Birthday",
+      "favorite": false,
+      "durationMs": 2100,
+      "frameCount": 33,
+      "width": 381,
+      "height": 450,
+      "bytes": 2382861,
+      "sourceUrl": "https://media.giphy.com/media/gqNQFhKmnQYUj8Dpwz/giphy.gif",
+      "addedAt": "2026-07-26T18:33:24.654Z"
+    },
+    {
       "id": "8lnvxmfvu",
       "name": "Alison Brie Smiles Subtly",
       "filename": "alison-brie-smiles-subtly.gif",
