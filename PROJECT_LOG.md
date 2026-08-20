@@ -135,3 +135,46 @@ index-clobbering bug, and no UI to rename/delete a library.
   device.
 - Consider batching the gif + thumb + index writes into a single atomic commit
   (git Data API) instead of sequential contents-API PUTs.
+
+---
+
+## GIPHY bulk import (branch: giphy-bulk-import)
+
+**Verified first: GIPHY's public API cannot list a user's collections.** The
+documented surface is content discovery only (search / trending / translate /
+random / categories / lookup-by-id), with no account-scoped endpoint and no
+auth beyond an API key; GIPHY's own generated clients expose nothing for
+channels, collections, users or favourites, and the 2018 favourites request
+(GiphyAPI #174) closed without one. `search?q=@username` covers a channel's
+*uploads*, which is a different set from saved collections. So the roadmap's
+fallback became the design: harvest ids in the browser where the session
+already exists, then use the public API for metadata.
+
+**Decisions:**
+
+- Ids come from `scripts/giphy-collect.js`, a console snippet that scrolls the
+  collection page and scrapes gif ids out of the DOM. Deliberately not calling
+  giphy.com's internal `/api/vN` routes: markup changes are visible and easy to
+  re-fix, an undocumented endpoint changes shape silently.
+- The importer is a local Node script, not a browser feature. The browser path
+  would make 3 commits per gif through the contents API (600 commits for 200
+  gifs); writing to disk makes it one commit per batch.
+- Dry run is the default, and the guard is real rather than cosmetic: committed
+  gif blobs stay in git history forever, so a bad import can't be undone by
+  deleting files.
+- Added `sourceId` to `GifRecord`. Dedupe on re-run needs a stable key and
+  `sourceUrl` carries per-request tracking params (`?cid=…&ep=…`), so matching
+  on it is unsafe. Older records fall back to extracting the id from the URL.
+- `sharp` as a **dev** dependency for first-frame WebP thumbnails (the browser's
+  canvas path doesn't exist in Node). The app's runtime deps are still React
+  and nothing else.
+- The script refuses to commit with a dirty tree — a dirty `data/index.json`
+  usually means the app has pending writes, which would otherwise get folded
+  into the import commit.
+
+**Tested** end-to-end against a local stub API (dry run, commit, re-run dedupe,
+oversize handling, `--no-thumbs`, dirty-tree guard). Not yet run against the
+real GIPHY API — the first real run should be a dry run.
+
+**Follow-up:** imported gifs arrive untagged, and tags drive Collections and
+search. The bulk-tagging pass in Priority 3 is what makes the import useful.

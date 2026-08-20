@@ -100,8 +100,15 @@ function parseArgs(argv) {
   return opts
 }
 
+/** Bad invocation — show how to invoke it properly. */
 function fail(msg) {
   console.error(`error: ${msg}\n\n${USAGE}`)
+  process.exit(1)
+}
+
+/** Something went wrong at run time; usage wouldn't help. */
+function abort(msg) {
+  console.error(`error: ${msg}`)
   process.exit(1)
 }
 
@@ -314,12 +321,12 @@ async function main() {
   // --- commit mode. A dirty tree usually means the app has pending writes to
   // data/index.json; committing on top would fold them into this batch.
   if (git('status', '--porcelain')) {
-    fail('working tree is not clean — commit or stash first (the app may have pending writes)')
+    abort('working tree is not clean — commit or stash first (the app may have pending writes)')
   }
 
   const sharp = opts.thumbs ? await loadSharp() : null
   if (opts.thumbs && !sharp) {
-    fail("thumbnails need the optional 'sharp' dependency (npm i -D sharp), or pass --no-thumbs")
+    abort("thumbnails need the optional 'sharp' dependency (npm i -D sharp), or pass --no-thumbs")
   }
 
   await mkdir(path.join(ROOT, 'gifs', library.id), { recursive: true })
@@ -391,8 +398,7 @@ async function main() {
     process.exit(1)
   }
 
-  // Keep the plan's order rather than whatever finished first, and match the
-  // app's convention of newest-first.
+  // Keep the collection's order rather than whatever download finished first.
   const order = new Map(plan.map((p, i) => [p.recordId, i]))
   records.sort((a, b) => order.get(a.id) - order.get(b.id))
 
@@ -401,7 +407,7 @@ async function main() {
   const next = {
     ...index,
     libraries: newLibrary ? [...index.libraries, library] : index.libraries,
-    gifs: [...records.reverse(), ...index.gifs],
+    gifs: [...records, ...index.gifs],
   }
   await writeFile(indexFile, `${JSON.stringify(next, null, 2)}\n`)
 

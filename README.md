@@ -103,6 +103,71 @@ library's gifs by tag. Adding a tag creates a collection implicitly.
 
 ---
 
+## Bulk import from GIPHY
+
+Adding ~200 gifs one at a time through the UI isn't practical, so imports run
+locally from a clone with `scripts/import-giphy.mjs`. One GIPHY collection
+becomes one GIFerence library, and the whole batch lands as a single commit.
+
+**GIPHY's public API has no collections endpoint** — collections are a
+logged-in giphy.com feature and aren't exposed to API keys. So the gif ids are
+harvested from the collection page in the browser first.
+
+### 1. Get the ids
+
+Open the collection on giphy.com while logged in, open DevTools → Console,
+paste the contents of `scripts/giphy-collect.js`, and press Enter. It scrolls
+to the bottom to load everything, then prints the collection name plus ids as
+JSON and copies it to the clipboard. Save that as e.g. `reactions.json`.
+
+### 2. Dry run
+
+```bash
+export GIPHY_API_KEY=...      # free key from developers.giphy.com
+npm run import -- --input reactions.json
+```
+
+This prints the target library, how many ids are new, the download size, and
+any oversized outliers. **Nothing is downloaded or written.**
+
+### 3. Import
+
+```bash
+npm run import -- --input reactions.json --commit
+```
+
+Downloads the `original` rendition of each gif, writes it to
+`gifs/<library>/`, generates a first-frame WebP in `thumbs/<library>/`, appends
+the records to `data/index.json`, and makes one commit. Add `--push` to push it.
+
+Useful options — `npm run import -- --help` lists them all:
+
+| Flag | Effect |
+| --- | --- |
+| `--library <name\|id>` | Target library; defaults to the collection name. Created if new. |
+| `--tag <tag>` | Applied to every imported gif; repeatable. |
+| `--max-mb <n>` | Outlier threshold, default 10. |
+| `--oversize <mode>` | Past that: `downsized` (default), `skip`, or `allow`. |
+| `--no-thumbs` | Skip thumbnails (they need the optional `sharp` dev dependency). |
+
+Notes:
+
+- **Dry run first, always.** Committed gif blobs stay in git history
+  permanently — deleting the files later doesn't reclaim the space, so a
+  botched import can only be undone by rewriting history.
+- Re-running is safe: gifs already imported are skipped, matched on the GIPHY
+  id stored in each record's `sourceId`.
+- The working tree must be clean. A dirty tree usually means the app has
+  pending writes to `data/index.json`, and committing on top would fold them
+  into the batch.
+- Thumbnails need `sharp` (`npm install` pulls it in as a dev dependency). The
+  app itself still ships React and nothing else.
+- Imported gifs land untagged unless you pass `--tag`. Tags drive Collections
+  and search, so plan a tagging pass afterwards or the library becomes one flat
+  pile.
+
+---
+
 ## Local development
 
 ```bash
