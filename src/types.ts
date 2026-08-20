@@ -30,6 +30,12 @@ export interface GifRecord {
   bytes?: number
   /** Original URL, when the gif was imported by URL. */
   sourceUrl?: string
+  /**
+   * Stable id at the source (currently the GIPHY id), set by the bulk importer.
+   * `sourceUrl` carries varying tracking params, so it can't be matched on —
+   * this is what makes re-running an import dedupe reliably.
+   */
+  sourceId?: string
   addedAt: string
 }
 
