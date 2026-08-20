@@ -2,6 +2,27 @@
 
 A running log of decisions and changes.
 
+## 2026-07-26 — Documentation pass & roadmap
+
+v1 is in real use (1 library, 5 gifs). Documented the project properly before
+opening the next phase of work:
+
+- **README.md** rewritten — setup split into per-repo vs per-device, usage
+  table, and an explicit "limits worth knowing" section.
+- **ARCHITECTURE.md** (new) — data model, read/write paths, and the three
+  invariants that caused the shipped bugs (`indexRef` vs stale `index`; no
+  non-safelisted request headers; read at a commit sha, not the branch ref).
+- **ROADMAP.md** (new) — handoff notes plus the plan for bulk GIPHY import,
+  multi-device/PWA, and housekeeping.
+
+Key finding while measuring: gifs average **~1.75 MB** because the app pulls
+GIPHY's *original* rendition, and **git history is permanent** — deleting a gif
+reclaims nothing. That caps the repo at ~550 gifs and makes rendition choice the
+central decision for any bulk import.
+
+Also noted as debt: orphaned `gifs/robin-hopper-rvaa/` files left by the
+index-clobbering bug, and no UI to rename/delete a library.
+
 ## 2026-07-18 — Faster refresh + save feedback
 
 - **Refresh delay (~1 min):** a fresh page load re-read `index.json` via the
