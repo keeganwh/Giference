@@ -2,6 +2,26 @@
 
 A running log of decisions and changes.
 
+## 2026-07-26 — Workflow change: branches, and import decisions settled
+
+**Workflow:** development moves from committing straight to `main` to **one
+branch per chunk of work, merged via PR**. Captured in the new `CLAUDE.md`,
+which is now the entry point for any session on this repo.
+
+**Decisions settled for the GIPHY bulk import:**
+- Clarified that gifs are stored as **full binaries committed to the repo**, not
+  links — `sourceUrl` is provenance only.
+- **Keep `original` renditions.** At <200 gifs (~350 MB) the repo is well inside
+  GitHub's 1 GB guidance, so quality wins; the earlier push toward downsized
+  renditions was scaled for thousands of gifs and doesn't apply.
+- Import targets GIPHY **collections** (not favourites separately), suggesting a
+  natural *one collection → one library* mapping.
+- Guardrails retained: dry-run by default, and flag >10 MB outliers (jsDelivr
+  refuses >20 MB).
+
+UI tweaks are expected to be small, iterative visual/layout changes — batched
+into short branches rather than planned up front.
+
 ## 2026-07-26 — Documentation pass & roadmap
 
 v1 is in real use (1 library, 5 gifs). Documented the project properly before

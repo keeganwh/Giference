@@ -10,7 +10,7 @@ on:
       - 'data/**'
       - 'gifs/**'
       - 'thumbs/**'
-      - 'PROJECT_LOG.md'
+      - '**/*.md'
   workflow_dispatch:
 
 # Allow the workflow to publish to Pages.

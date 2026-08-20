@@ -69,6 +69,8 @@ GIFerence is a static web app (React + Vite) with **no backend**:
 For internals — data model, consistency rules, and the invariants you must not
 break — see **[ARCHITECTURE.md](./ARCHITECTURE.md)**.
 For what's next, see **[ROADMAP.md](./ROADMAP.md)**.
+For how work on this repo is run (branches, checks), see
+**[CLAUDE.md](./CLAUDE.md)**.
 
 ### Hierarchy
 
@@ -85,10 +87,12 @@ library's gifs by tag. Adding a tag creates a collection implicitly.
 
 ## Limits worth knowing
 
+- **GIFs are stored, not linked.** Adding a gif commits a full binary copy into
+  this repo. `sourceUrl` only records where it came from — nothing breaks if the
+  original is deleted from GIPHY.
 - **Repo size.** GitHub recommends staying under **1 GB** (5 GB hard limit).
-  At the current average of ~1.75 MB/gif that's roughly **550 gifs** before you
-  should think about it. Importing smaller renditions raises that ceiling a lot
-  — see ROADMAP.
+  At ~1.75 MB/gif that's roughly **550 gifs**. A few hundred gifs at full
+  quality is comfortably fine; only revisit if it heads toward four figures.
 - **Git history is forever.** Deleting a gif removes it from the index but the
   blob stays in git history, so **space is not reclaimed**. Be deliberate about
   bulk imports.
