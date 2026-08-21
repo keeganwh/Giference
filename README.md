@@ -120,11 +120,15 @@ paste the contents of `scripts/giphy-collect.js`, and press Enter. It scrolls
 to the bottom to load everything, then prints the collection name plus ids as
 JSON and copies it to the clipboard. Save that as e.g. `reactions.json`.
 
+Save these under `giphy-input/` — it's gitignored, so the files don't dirty the
+working tree (which the importer refuses to commit on top of). Anywhere outside
+the repo works too.
+
 ### 2. Dry run
 
 ```bash
 export GIPHY_API_KEY=...      # free key from developers.giphy.com
-npm run import -- --input reactions.json
+npm run import -- --input giphy-input/reactions.json
 ```
 
 This prints the target library, how many ids are new, the download size, and
@@ -133,7 +137,7 @@ any oversized outliers. **Nothing is downloaded or written.**
 ### 3. Import
 
 ```bash
-npm run import -- --input reactions.json --commit
+npm run import -- --input giphy-input/reactions.json --commit
 ```
 
 Downloads the `original` rendition of each gif, writes it to
