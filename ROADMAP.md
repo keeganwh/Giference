@@ -21,6 +21,10 @@ Both production bugs so far came from violating them, and both were subtle
 **Working agreement:** one branch per chunk of work, PR into `main` — see
 CLAUDE.md. Verify with `npm run build` before pushing.
 
+**Latest:** the GIPHY bulk importer (Priority 1) is built and documented. It
+has been exercised end-to-end against a local stub, but **not yet against the
+real GIPHY API** — first real run should be a dry run.
+
 **Known debt carried in:**
 - Orphaned files at `gifs/robin-hopper-rvaa/` + matching thumbs (~2.8 MB), left
   by the index-clobbering bug. Not referenced by `index.json`.
@@ -31,10 +35,35 @@ CLAUDE.md. Verify with `npm run build` before pushing.
 
 ---
 
-## Priority 1 — Bulk import from GIPHY
+## Priority 1 — Bulk import from GIPHY ✅ built
 
 The headline ask: get existing GIPHY collections into GIFerence without adding
-~200 gifs by hand.
+~200 gifs by hand. Shipped as `scripts/giphy-collect.js` (browser snippet) +
+`scripts/import-giphy.mjs` (local Node importer) — see README for usage.
+
+### Resolved: the API does not expose collections
+
+The open question was whether GIPHY's public API can enumerate a logged-in
+user's collections. **It can't.** The documented surface is search / trending /
+translate / random / categories / lookup-by-id(s), plus the sticker and clip
+equivalents — all content-discovery endpoints, none of them account-scoped.
+There is no auth flow beyond an API key, so there is no "me" to scope to;
+GIPHY's own generated clients expose nothing for channels, collections, users,
+or favourites, and the 2018 request for favourites access (GiphyAPI issue #174)
+was closed without an endpoint ever appearing.
+
+`GET /v1/gifs/search?q=@username` can search a *channel's uploads*, which is not
+the same thing: collections are saved gifs, mostly other people's uploads, so a
+channel search misses them and picks up uploads that aren't in any collection.
+
+So the fallback is the path: harvest ids in the browser, where the session
+cookie already exists. `scripts/giphy-collect.js` scrolls the collection page to
+load everything and scrapes gif ids from the DOM (permalinks and media URLs)
+rather than calling an internal `/api/vN` route — markup changes are visible and
+easy to fix; an undocumented endpoint can change shape silently.
+
+From there everything else is public API: ids → `GET /v1/gifs?ids=…` in batches
+of 100 with a free key, using the returned `images` object for rendition URLs.
 
 ### How storage actually works (settled)
 
@@ -43,77 +72,65 @@ is a real file at `gifs/<libraryId>/<name>.gif`; `sourceUrl` only records its
 origin. Nothing depends on GIPHY staying online, which is the point: the
 library is self-contained and survives GIPHY deleting or rate-limiting things.
 
-### Sizing (settled: keep originals)
+### What got built
 
-At the current ~1.75 MB average, **~200 gifs ≈ 350 MB** — comfortably inside
-GitHub's 1 GB recommended ceiling (5 GB hard limit). Quality wins; there is no
-real tradeoff at this volume. **Import GIPHY's `original` rendition.**
+- **`original` renditions**, per the sizing call (~200 gifs ≈ 350 MB, well
+  inside GitHub's 1 GB recommendation). Anything past `--max-mb` (default 10) is
+  flagged and fetched as `downsized_large` instead — jsDelivr won't serve files
+  over 20 MB, so an oversized original would be broken in the app anyway.
+- **Dry run by default.** Prints the plan, total download size and outliers;
+  writes nothing without `--commit`. Git history is permanent, so a botched
+  import can't be cleaned up without a history rewrite.
+- **One collection → one library**, created if it doesn't exist.
+- **One commit per batch**, not three per gif: the script writes to disk
+  directly instead of going through the contents API.
+- **`sourceId`** added to `GifRecord` (the GIPHY id), so re-runs dedupe
+  reliably — `sourceUrl` carries varying tracking params and can't be matched on.
+  Pre-existing records fall back to matching the id inside `sourceUrl`.
+- Thumbnails via `sharp` (first frame → WebP at 320px, matching the browser
+  path), a dev dependency only; `--no-thumbs` skips it.
+- Guards: clean-tree check before committing, GIF magic-byte check on every
+  download, and content-hash dedupe within a batch.
+- **Overlapping collections resolve to tags, not copies.** A gif in several
+  GIPHY collections is imported once; later runs add their `--tag` values to
+  the existing record rather than downloading a second permanent copy. This
+  follows the model in ARCHITECTURE: a record belongs to exactly one library,
+  and anything cross-cutting is a tag.
 
-Two guardrails that cost nothing:
-- **Cap pathological outliers.** Anything over ~10 MB should be flagged (or
-  fetched as `downsized_large`) — rare, and jsDelivr refuses to serve files over
-  20 MB anyway, so an oversized original would be broken in the app regardless.
-- **Dry-run before committing.** Git history is permanent: committed blobs are
-  never reclaimed by a later delete, so a botched run can't be cleaned up
-  without a history rewrite. Print the total download size and stop unless
-  `--commit` is passed.
+### Sizing, measured — the ceiling is closer than planned
 
-Revisit rendition choice only if the library heads toward four figures.
+After the first three collections (**502 gifs imported, 507 records**): **862 MB
+of gifs**, averaging **1.70 MB each**. The original 1.75 MB estimate was right;
+an earlier 3.4 MB figure taken from a 14-gif sample was not.
 
-### Source: collections, not favourites
+What changed is the count, not the size: the brief assumed ~200 gifs, and three
+collections alone came to 502. The repo is now **~860 MB packed**, i.e. at
+GitHub's 1 GB *recommendation* (the hard limit is 5 GB, and above 1 GB GitHub
+starts emailing warnings). More collections are still to come.
 
-Import targets **GIPHY collections**. Favourites don't need separate handling —
-the collections cover it.
+So this is now the binding constraint on the project, and there are three
+levers, in rough order of preference:
 
-This suggests a natural mapping: **one GIPHY collection → one GIFerence
-library**, preserving the grouping already curated on GIPHY instead of dumping
-everything into one pile.
+1. **Split gifs into a separate data repo** (already in Backlog). The app reads
+   `owner/repo/branch` from config, so this is mostly a migration, not a
+   rewrite. Cleanest long-term answer and the one that actually removes the
+   ceiling.
+2. **Lower `--max-mb`** on future imports so bigger gifs come in as
+   `downsized_large`. Cheap, but only shaves the tail — nothing is over 10 MB
+   today.
+3. **Be selective** about which remaining collections get imported.
 
-Open question: GIPHY's public API covers search / trending / lookup-by-id, but
-collections are a logged-in giphy.com account feature and **may not be exposed
-via the API** — this needs verifying first, as it decides the whole input path.
-Reliable fallback: a one-time browser console snippet / bookmarklet run on the
-collection page while logged in, scrolling to load all items and dumping the gif
-ids (plus collection name) as JSON.
+Note that pruning *later* does not help: git history is permanent, so deleting
+gifs reclaims nothing without a history rewrite. The decision has to be made
+before importing, not after.
 
-### Proposed design: a local Node script, not the browser
+### Still open — tagging after import
 
-Run as `npm run import -- <args>` from a clone, **not** through the web app:
-
-- The browser path base64-encodes each file and makes one API call per file,
-  producing **3 commits per gif** (gif, thumb, index). 200 gifs = 600 commits.
-- A local script writes files to disk, generates thumbnails, updates
-  `index.json`, and makes **one commit** for the whole batch. Far faster, far
-  cleaner history, no API rate-limit exposure.
-
-Pipeline:
-
-1. **Input** — collection name + list of GIPHY ids (from the snippet above).
-2. **Metadata** — `GET /v1/gifs?ids=…` (batches of 100) with a free API key from
-   developers.giphy.com. Use the returned `images` object for rendition URLs
-   rather than guessing `media.giphy.com` patterns.
-3. **Dry run (default)** — print count, total download size, and any outliers;
-   stop unless `--commit`.
-4. **Download** originals; skip anything already imported (dedupe on GIPHY id).
-5. **Thumbnail** — first frame → WebP, matching the app's convention (`sharp` or
-   `ffmpeg`; the browser canvas path isn't available in Node).
-6. **Index** — append records, reusing `parseGifMeta()` for
-   `durationMs`/`width`/`height`, then write `index.json` once.
-7. **Commit + push** one batch commit per collection.
-
-### Schema note
-
-`GifRecord` has `sourceUrl` but no stable source id. Add an optional `sourceId`
-(the GIPHY id) so re-runs dedupe reliably — `sourceUrl` carries varying tracking
-params (`?cid=…&ep=…`), so it's unsafe to match on.
-
-### Tagging after import
-
-Imported gifs will land with thin or no tags, and tags are what drive
-Collections and search. **Import is only half the job** — pair it with a
-bulk-tagging pass in the UI, or the library degrades into one flat pile. GIPHY's
-`title`/`slug` can seed names; auto-deriving tags from slugs is worth a look but
-tends to be noisy.
+Imported gifs land with a name and description from GIPHY's `title` but **no
+tags** unless `--tag` is passed, and tags are what drive Collections and search.
+**Import is only half the job** — pair it with the bulk-tagging pass in
+Priority 3, or the library degrades into one flat pile. Auto-deriving tags from
+GIPHY slugs is worth a look but tends to be noisy.
 
 ---
 

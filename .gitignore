@@ -13,3 +13,7 @@ vite.config.d.ts
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Collection id lists for the GIPHY importer. Kept out of git so saving one
+# here doesn't dirty the tree — the importer refuses to commit a dirty tree.
+/giphy-input/

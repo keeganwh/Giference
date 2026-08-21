@@ -1,0 +1,8 @@
+# Normalise line endings so the index doesn't churn between Windows and Linux.
+# Without this, git on Windows rewrites data/index.json's LF to CRLF on
+# checkout and warns on every import commit.
+* text=auto eol=lf
+
+# Content is binary — never touch these.
+*.gif binary
+*.webp binary

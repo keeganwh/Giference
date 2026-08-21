@@ -103,6 +103,91 @@ library's gifs by tag. Adding a tag creates a collection implicitly.
 
 ---
 
+## Bulk import from GIPHY
+
+Adding ~200 gifs one at a time through the UI isn't practical, so imports run
+locally from a clone with `scripts/import-giphy.mjs`. One GIPHY collection
+becomes one GIFerence library, and the whole batch lands as a single commit.
+
+**GIPHY's public API has no collections endpoint** — collections are a
+logged-in giphy.com feature and aren't exposed to API keys. So the gif ids are
+harvested from the collection page in the browser first.
+
+### 1. Get the ids
+
+Open the collection on giphy.com while logged in, open DevTools → Console,
+paste the contents of `scripts/giphy-collect.js`, and press Enter. It scrolls
+to the bottom to load everything, then downloads the collection name plus ids
+as `<collection>.json`.
+
+Move that file into `giphy-input/` — it's gitignored, so the files don't dirty
+the working tree (which the importer refuses to commit on top of). Anywhere
+outside the repo works too.
+
+### 2. Dry run
+
+```bash
+export GIPHY_API_KEY=...      # free key from developers.giphy.com
+npm run import -- --input giphy-input/reactions.json
+```
+
+This prints the target library, how many ids are new, the download size, and
+any oversized outliers. **Nothing is downloaded or written.**
+
+### 3. Import
+
+```bash
+npm run import -- --input giphy-input/reactions.json --commit
+```
+
+Downloads the `original` rendition of each gif, writes it to
+`gifs/<library>/`, generates a first-frame WebP in `thumbs/<library>/`, appends
+the records to `data/index.json`, and makes one commit. Add `--push` to push it.
+
+Useful options — `npm run import -- --help` lists them all:
+
+| Flag | Effect |
+| --- | --- |
+| `--library <name\|id>` | Target library; defaults to the collection name. Created if new. |
+| `--tag <tag>` | Applied to every imported gif, and to already-imported ones; repeatable. |
+| `--max-mb <n>` | Outlier threshold, default 10. |
+| `--oversize <mode>` | Past that: `downsized` (default), `skip`, or `allow`. |
+| `--no-thumbs` | Skip thumbnails (they need the optional `sharp` dev dependency). |
+
+The input file just needs a list of GIPHY ids somewhere in it. The snippet's
+`{"collection": …, "ids": [...]}` is the normal case, but a bare `["abc","def"]`
+list, a list of `{"id": …}` objects, or a raw GIPHY API response (`{"data": […]}`)
+all work too. Hand-made files are handled as well — a UTF-8 BOM, console log
+lines pasted in around the JSON, or a plain one-id-per-line list. If the file
+can't be read at all, the error says what it found instead.
+
+Quote paths containing spaces: `--input "giphy-input/My Collection.json"`.
+
+Notes:
+
+- **Dry run first, always.** Committed gif blobs stay in git history
+  permanently — deleting the files later doesn't reclaim the space, so a
+  botched import can only be undone by rewriting history.
+- **Gifs in more than one collection are imported once.** A gif already in the
+  library isn't downloaded again — instead this run's `--tag` values are added
+  to the record that already exists, and it stays in the library it first
+  landed in. That's how overlapping collections are represented: one file, one
+  record, a tag per collection it belongs to. Matching is on the GIPHY id
+  stored in `sourceId`, so it holds across runs.
+- Because of that, `--tag` is worth passing on every run — without it, a gif
+  that's already imported is simply left alone and nothing records that it also
+  belongs to this collection.
+- The working tree must be clean. A dirty tree usually means the app has
+  pending writes to `data/index.json`, and committing on top would fold them
+  into the batch.
+- Thumbnails need `sharp` (`npm install` pulls it in as a dev dependency). The
+  app itself still ships React and nothing else.
+- Imported gifs land untagged unless you pass `--tag`. Tags drive Collections
+  and search, so plan a tagging pass afterwards or the library becomes one flat
+  pile.
+
+---
+
 ## Local development
 
 ```bash

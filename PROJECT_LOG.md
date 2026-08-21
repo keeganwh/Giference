@@ -135,3 +135,87 @@ index-clobbering bug, and no UI to rename/delete a library.
   device.
 - Consider batching the gif + thumb + index writes into a single atomic commit
   (git Data API) instead of sequential contents-API PUTs.
+
+---
+
+## GIPHY bulk import (branch: giphy-bulk-import)
+
+**Verified first: GIPHY's public API cannot list a user's collections.** The
+documented surface is content discovery only (search / trending / translate /
+random / categories / lookup-by-id), with no account-scoped endpoint and no
+auth beyond an API key; GIPHY's own generated clients expose nothing for
+channels, collections, users or favourites, and the 2018 favourites request
+(GiphyAPI #174) closed without one. `search?q=@username` covers a channel's
+*uploads*, which is a different set from saved collections. So the roadmap's
+fallback became the design: harvest ids in the browser where the session
+already exists, then use the public API for metadata.
+
+**Decisions:**
+
+- Ids come from `scripts/giphy-collect.js`, a console snippet that scrolls the
+  collection page and scrapes gif ids out of the DOM. Deliberately not calling
+  giphy.com's internal `/api/vN` routes: markup changes are visible and easy to
+  re-fix, an undocumented endpoint changes shape silently.
+- The importer is a local Node script, not a browser feature. The browser path
+  would make 3 commits per gif through the contents API (600 commits for 200
+  gifs); writing to disk makes it one commit per batch.
+- Dry run is the default, and the guard is real rather than cosmetic: committed
+  gif blobs stay in git history forever, so a bad import can't be undone by
+  deleting files.
+- Added `sourceId` to `GifRecord`. Dedupe on re-run needs a stable key and
+  `sourceUrl` carries per-request tracking params (`?cid=…&ep=…`), so matching
+  on it is unsafe. Older records fall back to extracting the id from the URL.
+- `sharp` as a **dev** dependency for first-frame WebP thumbnails (the browser's
+  canvas path doesn't exist in Node). The app's runtime deps are still React
+  and nothing else.
+- The script refuses to commit with a dirty tree — a dirty `data/index.json`
+  usually means the app has pending writes, which would otherwise get folded
+  into the import commit.
+
+**Tested** end-to-end against a local stub API (dry run, commit, re-run dedupe,
+oversize handling, `--no-thumbs`, dirty-tree guard). Not yet run against the
+real GIPHY API — the first real run should be a dry run.
+
+**Follow-up:** imported gifs arrive untagged, and tags drive Collections and
+search. The bulk-tagging pass in Priority 3 is what makes the import useful.
+
+**First live run against the real GIPHY API** turned up three things the stub
+couldn't:
+
+- `title` comes back **empty** for most gifs, and `slug` is `"<words>-<id>"`, so
+  the naive `title || slug || id` fallback produced names like
+  `dancing-alisonbrie-7dkevrstq4fxidhk5s` or a bare id. Now: title, else the
+  slug with its id tail stripped and title-cased, else `<Library> <n>` — a
+  numbered name beats naming a card after a raw GIPHY id.
+- Collection pages have an SEO `<h1>` ("Dancing GIFs on GIPHY - Be Animated"),
+  so the snippet was naming collections after that. It now prefers the URL's
+  last path segment, which is the actual collection slug.
+- When a gif is swapped to `downsized_large`, the dry run printed the
+  replacement's size next to an "oversize" flag, which read as a bug. It now
+  prints both sizes.
+
+Also measured: **3.4 MB average per gif** at `original`, roughly double the
+1.75 MB the sizing estimate assumed. See ROADMAP.
+
+**Overlapping collections.** The same gif is often in several GIPHY
+collections. First pass simply skipped an already-imported id, which silently
+lost the fact that it belonged to the second collection at all. Considered
+adding a second record pointing at the same file (one gif, two libraries) —
+rejected: the ask was one entry per gif, and it fits the data model worse, since
+`GifRecord.library` is singular by design. Settled on: import once, and add the
+run's `--tag` values to the existing record. One file, one record, a tag per
+collection — which is exactly how ARCHITECTURE says cross-cutting grouping is
+meant to work, given collections are derived from tags and never stored.
+
+**First three collections imported** (Hopper Dancing 14, Robin Hopper Reacts
+298, Robin Hopper Specific 190 — 502 gifs, plus 78 already-imported gifs
+re-tagged rather than duplicated). Audit of the resulting index: 507 records, no
+missing gif or thumbnail files, no broken library references, no duplicate
+record ids or `sourceId`s, metadata parsed on every record, nothing over
+jsDelivr's 20 MB limit, nothing untagged. The overlap-as-tags design held up at
+scale — 78 gifs sit in more than one collection and cost nothing extra.
+
+Correction to the earlier note: the average is **1.70 MB per gif**, matching the
+original estimate. The 3.4 MB figure came from a 14-gif sample and was wrong.
+The size pressure is from **count**, not per-gif size — the brief assumed ~200
+gifs and three collections produced 502. See ROADMAP for the options.
