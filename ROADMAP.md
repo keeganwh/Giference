@@ -97,15 +97,32 @@ library is self-contained and survives GIPHY deleting or rate-limiting things.
   follows the model in ARCHITECTURE: a record belongs to exactly one library,
   and anything cross-cutting is a tag.
 
-### Sizing, measured
+### Sizing, measured — the ceiling is closer than planned
 
-First real dry run (a 14-gif collection) averaged **3.4 MB per gif** at
-`original`, not the 1.75 MB the estimate assumed. At that rate ~200 gifs is
-**~670 MB** — still under GitHub's 1 GB recommendation, but with far less head
-room than planned. Worth re-checking the running total every few collections;
-if it looks like crossing ~800 MB, either drop the biggest outliers to
-`downsized_large` (lower `--max-mb`) or split gifs into a separate data repo
-(see Backlog).
+After the first three collections (**502 gifs imported, 507 records**): **862 MB
+of gifs**, averaging **1.70 MB each**. The original 1.75 MB estimate was right;
+an earlier 3.4 MB figure taken from a 14-gif sample was not.
+
+What changed is the count, not the size: the brief assumed ~200 gifs, and three
+collections alone came to 502. The repo is now **~860 MB packed**, i.e. at
+GitHub's 1 GB *recommendation* (the hard limit is 5 GB, and above 1 GB GitHub
+starts emailing warnings). More collections are still to come.
+
+So this is now the binding constraint on the project, and there are three
+levers, in rough order of preference:
+
+1. **Split gifs into a separate data repo** (already in Backlog). The app reads
+   `owner/repo/branch` from config, so this is mostly a migration, not a
+   rewrite. Cleanest long-term answer and the one that actually removes the
+   ceiling.
+2. **Lower `--max-mb`** on future imports so bigger gifs come in as
+   `downsized_large`. Cheap, but only shaves the tail — nothing is over 10 MB
+   today.
+3. **Be selective** about which remaining collections get imported.
+
+Note that pruning *later* does not help: git history is permanent, so deleting
+gifs reclaims nothing without a history rewrite. The decision has to be made
+before importing, not after.
 
 ### Still open — tagging after import
 

@@ -206,3 +206,16 @@ rejected: the ask was one entry per gif, and it fits the data model worse, since
 run's `--tag` values to the existing record. One file, one record, a tag per
 collection — which is exactly how ARCHITECTURE says cross-cutting grouping is
 meant to work, given collections are derived from tags and never stored.
+
+**First three collections imported** (Hopper Dancing 14, Robin Hopper Reacts
+298, Robin Hopper Specific 190 — 502 gifs, plus 78 already-imported gifs
+re-tagged rather than duplicated). Audit of the resulting index: 507 records, no
+missing gif or thumbnail files, no broken library references, no duplicate
+record ids or `sourceId`s, metadata parsed on every record, nothing over
+jsDelivr's 20 MB limit, nothing untagged. The overlap-as-tags design held up at
+scale — 78 gifs sit in more than one collection and cost nothing extra.
+
+Correction to the earlier note: the average is **1.70 MB per gif**, matching the
+original estimate. The 3.4 MB figure came from a 14-gif sample and was wrong.
+The size pressure is from **count**, not per-gif size — the brief assumed ~200
+gifs and three collections produced 502. See ROADMAP for the options.
