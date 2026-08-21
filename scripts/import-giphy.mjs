@@ -22,6 +22,7 @@
 
 import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -398,27 +399,60 @@ async function main() {
   const newLibrary = !library
   library ??= makeLibrary(wanted)
 
-  // --- dedupe. `sourceId` is authoritative; fall back to matching the id
-  // inside `sourceUrl` for records added before that field existed.
-  const seen = new Set()
+  // --- what's already here. `sourceId` is authoritative; fall back to matching
+  // the id inside `sourceUrl` for records added before that field existed.
+  const existing = new Map() // giphy id -> the record already in the index
   for (const g of index.gifs) {
-    if (g.sourceId) seen.add(g.sourceId)
-    const m = g.sourceUrl?.match(/\/media\/(?:v1\.[^/]+\/)?([A-Za-z0-9]{6,})\//)
-    if (m) seen.add(m[1])
+    const key = g.sourceId ?? g.sourceUrl?.match(/\/media\/(?:v1\.[^/]+\/)?([A-Za-z0-9]{6,})\//)?.[1]
+    if (key && !existing.has(key)) existing.set(key, g)
   }
-  const fresh = ids.filter((id) => !seen.has(id))
-  const skipped = ids.length - fresh.length
+
+  // Collections overlap: the same gif legitimately sits in several. A gif is
+  // imported once and once only — a second copy would be a second permanent
+  // blob in git history, and a record belongs to exactly one library anyway.
+  // The other collections are recorded the way this app records everything
+  // cross-cutting: as tags. So an already-imported gif picks up this run's
+  // --tag values on its existing record instead of being downloaded again.
+  const fresh = []
+  const retag = []
+  for (const id of ids) {
+    const record = existing.get(id)
+    if (!record) {
+      fresh.push(id)
+      continue
+    }
+    const missing = opts.tags.filter((t) => !record.tags.includes(t))
+    if (missing.length) retag.push({ record, missing })
+  }
+  const alreadyDone = ids.length - fresh.length - retag.length
 
   console.log(`collection: ${collection ?? '(unnamed)'}`)
   console.log(`library:    ${library.name} (${library.id})${newLibrary ? ' — will be created' : ''}`)
-  console.log(`ids:        ${ids.length} given, ${skipped} already imported, ${fresh.length} to fetch\n`)
-  if (fresh.length === 0) {
+  console.log(`ids:        ${ids.length} given`)
+  console.log(`            ${fresh.length} to download`)
+  if (retag.length) console.log(`            ${retag.length} already imported — will be tagged, not re-downloaded`)
+  if (alreadyDone) console.log(`            ${alreadyDone} already imported, nothing to change`)
+  console.log('')
+
+  if (retag.length) {
+    for (const r of retag) {
+      const lib = index.libraries.find((l) => l.id === r.record.library)?.name ?? r.record.library
+      console.log(`  tag    ${r.record.filename}  (in ${lib})  += ${r.missing.join(', ')}`)
+    }
+    console.log('')
+  }
+  if (ids.length > fresh.length && opts.tags.length === 0) {
+    console.log('note: some of these are already imported. Pass --tag <name> to mark them as')
+    console.log('      belonging to this collection too — otherwise they are left untouched.\n')
+  }
+
+  if (fresh.length === 0 && retag.length === 0) {
     console.log('nothing to do.')
     return
   }
 
   // --- metadata + plan
-  const meta = await fetchMetadata(fresh, apiKey)
+  const meta = fresh.length ? await fetchMetadata(fresh, apiKey) : []
   const missing = fresh.filter((id) => !meta.some((g) => g.id === id))
   const maxBytes = opts.maxMb * 1024 * 1024
 
@@ -465,7 +499,7 @@ async function main() {
     console.log(`\nTo import for real:\n  npm run import -- ${echoed.join(' ')} --commit`)
     return
   }
-  if (plan.length === 0) {
+  if (plan.length === 0 && retag.length === 0) {
     console.log('\nnothing importable.')
     return
   }
@@ -481,8 +515,10 @@ async function main() {
     abort("thumbnails need the optional 'sharp' dependency (npm i -D sharp), or pass --no-thumbs")
   }
 
-  await mkdir(path.join(ROOT, 'gifs', library.id), { recursive: true })
-  if (sharp) await mkdir(path.join(ROOT, 'thumbs', library.id), { recursive: true })
+  if (plan.length) {
+    await mkdir(path.join(ROOT, 'gifs', library.id), { recursive: true })
+    if (sharp) await mkdir(path.join(ROOT, 'thumbs', library.id), { recursive: true })
+  }
 
   const digests = new Map() // content hash -> filename, to catch same-gif-twice
   const records = []
@@ -544,7 +580,7 @@ async function main() {
     console.log(`  ${records.length}/${plan.length} ${p.filename}`)
   })
 
-  if (records.length === 0) {
+  if (records.length === 0 && plan.length > 0) {
     console.log('\nnothing downloaded successfully — leaving the index alone.')
     for (const p of problems) console.log(`  ${p.id}: ${p.reason}`)
     process.exit(1)
@@ -554,17 +590,36 @@ async function main() {
   const order = new Map(plan.map((p, i) => [p.recordId, i]))
   records.sort((a, b) => order.get(a.id) - order.get(b.id))
 
-  // One index write for the whole batch: the new library (if any) plus every
-  // record, built from the copy we read off disk a moment ago.
+  // Gifs that were already imported: add this run's tags to the record that
+  // exists, leaving it in the library it was first imported into.
+  const extraTags = new Map(retag.map((r) => [r.record.id, r.missing]))
+
+  // One index write for the whole batch: the new library (if any), the new
+  // records, and the re-tagged ones — built from the copy we read off disk a
+  // moment ago.
   const next = {
     ...index,
     libraries: newLibrary ? [...index.libraries, library] : index.libraries,
-    gifs: [...records, ...index.gifs],
+    gifs: [
+      ...records,
+      ...index.gifs.map((g) =>
+        extraTags.has(g.id) ? { ...g, tags: [...g.tags, ...extraTags.get(g.id)] } : g,
+      ),
+    ],
   }
   await writeFile(indexFile, `${JSON.stringify(next, null, 2)}\n`)
 
-  git('add', INDEX_PATH, `gifs/${library.id}`, ...(sharp ? [`thumbs/${library.id}`] : []))
-  const subject = `Import ${records.length} gifs from GIPHY into ${library.name}`
+  // A retag-only run writes no files, so those directories may not exist.
+  const paths = [INDEX_PATH]
+  for (const dir of [`gifs/${library.id}`, ...(sharp ? [`thumbs/${library.id}`] : [])]) {
+    if (existsSync(path.join(ROOT, dir))) paths.push(dir)
+  }
+  git('add', ...paths)
+
+  const parts = []
+  if (records.length) parts.push(`Import ${records.length} gifs from GIPHY into ${library.name}`)
+  if (retag.length) parts.push(`tag ${retag.length} already-imported gifs`)
+  const subject = parts.join(', ')
   git('commit', '-m', subject, '-m', `Collection: ${collection ?? library.name}`)
   console.log(`\ncommitted: ${subject}`)
   for (const p of problems) console.log(`  not imported — ${p.id}: ${p.reason}`)

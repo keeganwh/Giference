@@ -149,7 +149,7 @@ Useful options — `npm run import -- --help` lists them all:
 | Flag | Effect |
 | --- | --- |
 | `--library <name\|id>` | Target library; defaults to the collection name. Created if new. |
-| `--tag <tag>` | Applied to every imported gif; repeatable. |
+| `--tag <tag>` | Applied to every imported gif, and to already-imported ones; repeatable. |
 | `--max-mb <n>` | Outlier threshold, default 10. |
 | `--oversize <mode>` | Past that: `downsized` (default), `skip`, or `allow`. |
 | `--no-thumbs` | Skip thumbnails (they need the optional `sharp` dev dependency). |
@@ -168,8 +168,15 @@ Notes:
 - **Dry run first, always.** Committed gif blobs stay in git history
   permanently — deleting the files later doesn't reclaim the space, so a
   botched import can only be undone by rewriting history.
-- Re-running is safe: gifs already imported are skipped, matched on the GIPHY
-  id stored in each record's `sourceId`.
+- **Gifs in more than one collection are imported once.** A gif already in the
+  library isn't downloaded again — instead this run's `--tag` values are added
+  to the record that already exists, and it stays in the library it first
+  landed in. That's how overlapping collections are represented: one file, one
+  record, a tag per collection it belongs to. Matching is on the GIPHY id
+  stored in `sourceId`, so it holds across runs.
+- Because of that, `--tag` is worth passing on every run — without it, a gif
+  that's already imported is simply left alone and nothing records that it also
+  belongs to this collection.
 - The working tree must be clean. A dirty tree usually means the app has
   pending writes to `data/index.json`, and committing on top would fold them
   into the batch.

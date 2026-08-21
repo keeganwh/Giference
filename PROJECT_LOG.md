@@ -196,3 +196,13 @@ couldn't:
 
 Also measured: **3.4 MB average per gif** at `original`, roughly double the
 1.75 MB the sizing estimate assumed. See ROADMAP.
+
+**Overlapping collections.** The same gif is often in several GIPHY
+collections. First pass simply skipped an already-imported id, which silently
+lost the fact that it belonged to the second collection at all. Considered
+adding a second record pointing at the same file (one gif, two libraries) —
+rejected: the ask was one entry per gif, and it fits the data model worse, since
+`GifRecord.library` is singular by design. Settled on: import once, and add the
+run's `--tag` values to the existing record. One file, one record, a tag per
+collection — which is exactly how ARCHITECTURE says cross-cutting grouping is
+meant to work, given collections are derived from tags and never stored.

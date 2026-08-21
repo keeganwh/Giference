@@ -91,6 +91,11 @@ library is self-contained and survives GIPHY deleting or rate-limiting things.
   path), a dev dependency only; `--no-thumbs` skips it.
 - Guards: clean-tree check before committing, GIF magic-byte check on every
   download, and content-hash dedupe within a batch.
+- **Overlapping collections resolve to tags, not copies.** A gif in several
+  GIPHY collections is imported once; later runs add their `--tag` values to
+  the existing record rather than downloading a second permanent copy. This
+  follows the model in ARCHITECTURE: a record belongs to exactly one library,
+  and anything cross-cutting is a tag.
 
 ### Sizing, measured
 
