@@ -178,3 +178,21 @@ real GIPHY API — the first real run should be a dry run.
 
 **Follow-up:** imported gifs arrive untagged, and tags drive Collections and
 search. The bulk-tagging pass in Priority 3 is what makes the import useful.
+
+**First live run against the real GIPHY API** turned up three things the stub
+couldn't:
+
+- `title` comes back **empty** for most gifs, and `slug` is `"<words>-<id>"`, so
+  the naive `title || slug || id` fallback produced names like
+  `dancing-alisonbrie-7dkevrstq4fxidhk5s` or a bare id. Now: title, else the
+  slug with its id tail stripped and title-cased, else `<Library> <n>` — a
+  numbered name beats naming a card after a raw GIPHY id.
+- Collection pages have an SEO `<h1>` ("Dancing GIFs on GIPHY - Be Animated"),
+  so the snippet was naming collections after that. It now prefers the URL's
+  last path segment, which is the actual collection slug.
+- When a gif is swapped to `downsized_large`, the dry run printed the
+  replacement's size next to an "oversize" flag, which read as a bug. It now
+  prints both sizes.
+
+Also measured: **3.4 MB average per gif** at `original`, roughly double the
+1.75 MB the sizing estimate assumed. See ROADMAP.

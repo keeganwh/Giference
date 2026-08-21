@@ -157,6 +157,28 @@ async function mapLimit(items, limit, fn) {
 }
 
 /**
+ * A human-readable name for a gif. GIPHY's `title` is often empty, and the
+ * `slug` is "<words>-<id>" — using it raw gives names like
+ * "dancing-alisonbrie-7dkevrstq4fxidhk5s". Drop the id tail and title-case
+ * what's left. Returns null when there's nothing to work with, so the caller
+ * can number it rather than name a card after a raw GIPHY id.
+ */
+function deriveName(gif) {
+  const title = gif.title?.replace(/\s+GIF$/i, '').trim()
+  if (title) return title
+
+  const slug = gif.slug?.trim()
+  if (slug) {
+    const words = slug
+      .replace(new RegExp(`-?${gif.id}$`, 'i'), '')
+      .replace(/[-_]+/g, ' ')
+      .trim()
+    if (words) return words.replace(/\b\w/g, (c) => c.toUpperCase())
+  }
+  return null
+}
+
+/**
  * Read whatever ended up in the input file. The happy path is the JSON the
  * console snippet prints, but these files get made by hand — copied out of
  * DevTools, pasted into Notepad, saved with a BOM, sometimes with the snippet's
@@ -401,6 +423,7 @@ async function main() {
   const maxBytes = opts.maxMb * 1024 * 1024
 
   const usedPaths = new Set(index.gifs.map((g) => g.path))
+  let unnamed = 0
   const plan = []
   const problems = []
   for (const gif of meta) {
@@ -409,7 +432,7 @@ async function main() {
       problems.push({ id: gif.id, title: gif.title, reason: pick.error })
       continue
     }
-    const name = (gif.title || gif.slug || gif.id).replace(/\s+GIF$/i, '').trim() || gif.id
+    const name = deriveName(gif) ?? `${library.name} ${++unnamed}`
     const slug = slugify(name)
     const recordId = shortId()
     let filename = `${slug}.gif`
@@ -423,7 +446,11 @@ async function main() {
   const unknown = plan.filter((p) => !p.pick.size).length
   console.log(`\nplanned: ${plan.length} gifs, ~${mb(known)}${unknown ? ` (+${unknown} of unknown size)` : ''}`)
   for (const p of plan) {
-    const flag = p.pick.oversize ? `  [oversize -> ${p.pick.rendition}]` : ''
+    // When we swapped rendition, show both sizes — otherwise the printed size
+    // is the replacement's and the "oversize" flag looks wrong next to it.
+    const flag = p.pick.oversize
+      ? `  [original ${mb(p.pick.originalSize ?? p.pick.size)} -> ${p.pick.rendition}]`
+      : ''
     console.log(`  ${p.gif.id}  ${mb(p.pick.size || 0).padStart(8)}  ${p.filename}${flag}`)
   }
   if (missing.length) console.log(`\nnot found on GIPHY (${missing.length}): ${missing.join(', ')}`)

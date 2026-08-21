@@ -92,6 +92,16 @@ library is self-contained and survives GIPHY deleting or rate-limiting things.
 - Guards: clean-tree check before committing, GIF magic-byte check on every
   download, and content-hash dedupe within a batch.
 
+### Sizing, measured
+
+First real dry run (a 14-gif collection) averaged **3.4 MB per gif** at
+`original`, not the 1.75 MB the estimate assumed. At that rate ~200 gifs is
+**~670 MB** — still under GitHub's 1 GB recommendation, but with far less head
+room than planned. Worth re-checking the running total every few collections;
+if it looks like crossing ~800 MB, either drop the biggest outliers to
+`downsized_large` (lower `--max-mb`) or split gifs into a separate data repo
+(see Backlog).
+
 ### Still open — tagging after import
 
 Imported gifs land with a name and description from GIPHY's `title` but **no

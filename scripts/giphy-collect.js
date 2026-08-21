@@ -51,9 +51,19 @@
   }
   harvest()
 
+  // Name the collection from the URL slug first: collection pages carry an SEO
+  // <h1>/<title> ("Dancing GIFs on GIPHY - Be Animated"), while the last path
+  // segment is the actual collection.
+  const segments = location.pathname.split('/').filter(Boolean)
+  const last = segments[segments.length - 1]
+  const generic = ['channel', 'gifs', 'stickers', 'collections', 'favorites']
+  const fromUrl =
+    last && !generic.includes(last.toLowerCase()) && segments.length > 1
+      ? last.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+      : ''
   const heading = document.querySelector('h1')?.textContent?.trim()
   const payload = {
-    collection: heading || document.title.replace(/\s*[|—-]\s*GIPHY.*$/i, '').trim(),
+    collection: fromUrl || heading || document.title.replace(/\s*[|—-]\s*GIPHY.*$/i, '').trim(),
     url: location.href,
     count: ids.size,
     ids: [...ids],
