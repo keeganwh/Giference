@@ -117,12 +117,12 @@ harvested from the collection page in the browser first.
 
 Open the collection on giphy.com while logged in, open DevTools → Console,
 paste the contents of `scripts/giphy-collect.js`, and press Enter. It scrolls
-to the bottom to load everything, then prints the collection name plus ids as
-JSON and copies it to the clipboard. Save that as e.g. `reactions.json`.
+to the bottom to load everything, then downloads the collection name plus ids
+as `<collection>.json`.
 
-Save these under `giphy-input/` — it's gitignored, so the files don't dirty the
-working tree (which the importer refuses to commit on top of). Anywhere outside
-the repo works too.
+Move that file into `giphy-input/` — it's gitignored, so the files don't dirty
+the working tree (which the importer refuses to commit on top of). Anywhere
+outside the repo works too.
 
 ### 2. Dry run
 
@@ -157,7 +157,11 @@ Useful options — `npm run import -- --help` lists them all:
 The input file just needs a list of GIPHY ids somewhere in it. The snippet's
 `{"collection": …, "ids": [...]}` is the normal case, but a bare `["abc","def"]`
 list, a list of `{"id": …}` objects, or a raw GIPHY API response (`{"data": […]}`)
-all work too. If a file can't be read, the error says what it found instead.
+all work too. Hand-made files are handled as well — a UTF-8 BOM, console log
+lines pasted in around the JSON, or a plain one-id-per-line list. If the file
+can't be read at all, the error says what it found instead.
+
+Quote paths containing spaces: `--input "giphy-input/My Collection.json"`.
 
 Notes:
 

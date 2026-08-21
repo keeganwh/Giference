@@ -9,9 +9,10 @@
 //   1. Open the collection on giphy.com (logged in) — the page that lists the
 //      gifs, e.g. https://giphy.com/channel/<you>/<collection>
 //   2. Open DevTools -> Console, paste this whole file, press Enter.
-//   3. It scrolls to the bottom (lazy-loading everything), then prints JSON and
-//      copies it to the clipboard. Save it as e.g. `reactions.json`.
-//   4. node scripts/import-giphy.mjs --input reactions.json
+//   3. It scrolls to the bottom (lazy-loading everything), then downloads the
+//      ids as <collection>.json.
+//   4. Move that file into giphy-input/ and run:
+//      npm run import -- --input "giphy-input/<collection>.json"
 //
 // Ids are scraped from the DOM rather than an internal endpoint on purpose:
 // markup changes are visible and easy to re-fix, whereas an undocumented
@@ -60,11 +61,32 @@
 
   const json = JSON.stringify(payload, null, 2)
   console.log(json)
+
+  // Save it as a file rather than relying on the clipboard: hand-copying out of
+  // the console is where this goes wrong (truncated output, log lines pasted in
+  // with the data, Notepad adding a BOM). The importer copes with all of that,
+  // but a real file avoids it.
   try {
-    copy(payload) // DevTools helper; not available outside the console
-    console.log('[giphy-collect] copied to clipboard — save it as <collection>.json')
-  } catch {
-    console.log('[giphy-collect] copy() unavailable — copy the JSON above by hand')
+    const name = `${(payload.collection || 'giphy-collection')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'giphy-collection'}.json`
+    const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = name
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+    console.log(`[giphy-collect] downloaded ${name} (${payload.count} ids) — move it into giphy-input/`)
+  } catch (e) {
+    console.log(`[giphy-collect] download failed (${e.message}) — copy the JSON above by hand`)
+    try {
+      copy(payload) // DevTools-only helper; absent outside the console
+      console.log('[giphy-collect] also copied to the clipboard')
+    } catch {}
   }
+
   return payload
 })()

@@ -157,6 +157,64 @@ async function mapLimit(items, limit, fn) {
 }
 
 /**
+ * Read whatever ended up in the input file. The happy path is the JSON the
+ * console snippet prints, but these files get made by hand — copied out of
+ * DevTools, pasted into Notepad, saved with a BOM, sometimes with the snippet's
+ * own log lines still attached. Recover from those rather than making someone
+ * hand-edit JSON.
+ */
+function readIdList(text) {
+  const clean = text.replace(/^\uFEFF/, '') // Notepad writes a UTF-8 BOM
+
+  const tryParse = (candidate) => {
+    try {
+      return JSON.parse(candidate)
+    } catch {
+      return undefined
+    }
+  }
+
+  let raw = tryParse(clean)
+  let howFound = 'json'
+
+  // Surrounding console noise (the snippet's own log lines, say). Try the
+  // widest {...} and the widest [...] separately — taking the outermost of
+  // either would span the noise when a log line starts with a bracket.
+  if (raw === undefined) {
+    for (const [open, close] of [['{', '}'], ['[', ']']]) {
+      const first = clean.indexOf(open)
+      const last = clean.lastIndexOf(close)
+      if (first === -1 || last <= first) continue
+      const parsed = tryParse(clean.slice(first, last + 1))
+      if (parsed !== undefined && extractIds(parsed).length) {
+        raw = parsed
+        howFound = 'ignored some non-JSON text around the data'
+        break
+      }
+    }
+  }
+
+  if (raw !== undefined) {
+    const found = extractIds(raw)
+    if (found.length) return { raw, fromFile: found, howFound }
+  }
+
+  // Last resort: treat it as a plain list and pick out id-shaped tokens. GIPHY
+  // ids are long alphanumeric strings, so a 10-char minimum keeps ordinary
+  // words out of the results.
+  const scraped = [...new Set(clean.split(/[^A-Za-z0-9]+/).filter((t) => /^[A-Za-z0-9]{10,}$/.test(t)))]
+  if (scraped.length) {
+    return {
+      raw,
+      fromFile: scraped,
+      howFound: `couldn't parse this as JSON, so read ${scraped.length} id-like values out of the text — check the list below`,
+    }
+  }
+
+  return { raw, fromFile: [], howFound }
+}
+
+/**
  * Pull GIPHY ids out of whatever shape the input file happens to be. The ids
  * usually come from `scripts/giphy-collect.js`, but hand-assembled files and
  * raw GIPHY API responses turn up too, so accept the obvious variants rather
@@ -274,20 +332,26 @@ async function main() {
   let collection = opts.collection
   if (opts.input) {
     const file = path.resolve(opts.input)
-    let raw
+    let text
     try {
-      raw = JSON.parse(await readFile(file, 'utf8'))
+      text = await readFile(file, 'utf8')
     } catch (e) {
-      abort(`couldn't read ${opts.input} as JSON: ${e.message}`)
+      abort(
+        `couldn't open ${opts.input}: ${e.message}\n` +
+          `Check the path — quote it if it contains spaces:  --input "giphy-input/My Collection.json"\n` +
+          `On Windows, also check File Explorer isn't hiding a second ".txt" extension.`,
+      )
     }
-    const fromFile = extractIds(raw)
+    const { raw, fromFile, howFound } = readIdList(text)
     if (fromFile.length === 0) {
       abort(
         `found no GIPHY ids in ${opts.input}.\n` +
           `Expected a list of ids, or an object with an "ids" (or "data"/"gifs") array.\n` +
-          `Top level of the file is: ${describeShape(raw)}`,
+          `The file ${raw === undefined ? "isn't valid JSON" : `contains ${describeShape(raw)}`}.\n` +
+          `It starts with: ${JSON.stringify(text.slice(0, 120))}`,
       )
     }
+    if (howFound !== 'json') console.log(`note: ${howFound}`)
     ids = [...ids, ...fromFile]
     collection ??= collectionName(raw) ?? path.basename(file).replace(/\.json$/i, '')
   }
