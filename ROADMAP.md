@@ -111,10 +111,25 @@ starts emailing warnings). More collections are still to come.
 So this is now the binding constraint on the project, and there are three
 levers, in rough order of preference:
 
-1. **Split gifs into a separate data repo** (already in Backlog). The app reads
-   `owner/repo/branch` from config, so this is mostly a migration, not a
-   rewrite. Cleanest long-term answer and the one that actually removes the
-   ceiling.
+1. **Split gifs into a separate data repo** (already in Backlog). Correcting an
+   earlier note in this file that called it "mostly a migration": there are two
+   variants and only one of them helps.
+
+   - *Move everything* — copy `gifs/` and `thumbs/` into a new repo and point
+     the app's config at it. Needs no code change, but the copy carries the same
+     ~860 MB, so the new repo starts nearly full. This buys almost nothing.
+   - *New gifs only* — leave what's here and send future imports to a second
+     repo. This is the one that actually removes the ceiling, and it needs a
+     small code change: `getConfig()` is global today and
+     `src/lib/display.ts` builds every URL from that one config, so a record
+     needs to say which repo holds it. An optional `repo` field on `Library`
+     (all gifs in a library live together, which the importer already
+     guarantees) is probably the smallest change that works — resolve the
+     config per gif via its library, defaulting to the current one so existing
+     records keep working untouched.
+
+   Either way the existing ~860 MB stays in this repo's history permanently.
+   A data repo caps future growth; it cannot shrink what's already here.
 2. **Lower `--max-mb`** on future imports so bigger gifs come in as
    `downsized_large`. Cheap, but only shaves the tail — nothing is over 10 MB
    today.
