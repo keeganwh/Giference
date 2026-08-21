@@ -150,6 +150,11 @@ Useful options — `npm run import -- --help` lists them all:
 | `--oversize <mode>` | Past that: `downsized` (default), `skip`, or `allow`. |
 | `--no-thumbs` | Skip thumbnails (they need the optional `sharp` dev dependency). |
 
+The input file just needs a list of GIPHY ids somewhere in it. The snippet's
+`{"collection": …, "ids": [...]}` is the normal case, but a bare `["abc","def"]`
+list, a list of `{"id": …}` objects, or a raw GIPHY API response (`{"data": […]}`)
+all work too. If a file can't be read, the error says what it found instead.
+
 Notes:
 
 - **Dry run first, always.** Committed gif blobs stay in git history

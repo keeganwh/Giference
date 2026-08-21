@@ -156,6 +156,51 @@ async function mapLimit(items, limit, fn) {
   return out
 }
 
+/**
+ * Pull GIPHY ids out of whatever shape the input file happens to be. The ids
+ * usually come from `scripts/giphy-collect.js`, but hand-assembled files and
+ * raw GIPHY API responses turn up too, so accept the obvious variants rather
+ * than making people reformat by hand:
+ *   ["abc", "def"]                  a bare list
+ *   [{ id: "abc" }, …]              a list of gif objects
+ *   { ids: [...] } / { data: [...] } / { gifs: [...] } / { items } / { results }
+ */
+function extractIds(raw) {
+  const fromArray = (arr) =>
+    arr
+      .map((entry) => (typeof entry === 'string' ? entry : entry?.id))
+      .filter((id) => typeof id === 'string' && id.trim())
+
+  if (Array.isArray(raw)) return fromArray(raw)
+  if (raw && typeof raw === 'object') {
+    for (const key of ['ids', 'data', 'gifs', 'items', 'results']) {
+      if (Array.isArray(raw[key])) {
+        const found = fromArray(raw[key])
+        if (found.length) return found
+      }
+    }
+  }
+  return []
+}
+
+function collectionName(raw) {
+  if (!raw || Array.isArray(raw) || typeof raw !== 'object') return undefined
+  for (const key of ['collection', 'name', 'title']) {
+    if (typeof raw[key] === 'string' && raw[key].trim()) return raw[key].trim()
+  }
+  return undefined
+}
+
+/** Describe an unusable input file well enough to see what's wrong with it. */
+function describeShape(raw) {
+  if (Array.isArray(raw)) return `an array of ${raw.length} items`
+  if (raw && typeof raw === 'object') {
+    const keys = Object.keys(raw)
+    return keys.length ? `an object with keys: ${keys.join(', ')}` : 'an empty object'
+  }
+  return typeof raw
+}
+
 // ---------------------------------------------------------------- giphy
 
 async function fetchMetadata(ids, apiKey) {
@@ -228,11 +273,23 @@ async function main() {
   let ids = opts.ids ?? []
   let collection = opts.collection
   if (opts.input) {
-    const raw = JSON.parse(await readFile(path.resolve(opts.input), 'utf8'))
-    const fromFile = Array.isArray(raw) ? raw : raw.ids
-    if (!Array.isArray(fromFile)) fail(`${opts.input} has no "ids" array`)
+    const file = path.resolve(opts.input)
+    let raw
+    try {
+      raw = JSON.parse(await readFile(file, 'utf8'))
+    } catch (e) {
+      abort(`couldn't read ${opts.input} as JSON: ${e.message}`)
+    }
+    const fromFile = extractIds(raw)
+    if (fromFile.length === 0) {
+      abort(
+        `found no GIPHY ids in ${opts.input}.\n` +
+          `Expected a list of ids, or an object with an "ids" (or "data"/"gifs") array.\n` +
+          `Top level of the file is: ${describeShape(raw)}`,
+      )
+    }
     ids = [...ids, ...fromFile]
-    collection ??= raw.collection
+    collection ??= collectionName(raw) ?? path.basename(file).replace(/\.json$/i, '')
   }
   ids = [...new Set(ids.map((s) => String(s).trim()).filter(Boolean))]
   if (ids.length === 0) fail('no ids — pass --input or --ids')
@@ -309,8 +366,12 @@ async function main() {
   for (const p of problems) console.log(`skipping ${p.id}: ${p.reason}`)
 
   if (!opts.commit) {
-    console.log('\nDRY RUN — nothing downloaded or written. Re-run with --commit to import.')
+    console.log('\nDRY RUN — nothing downloaded or written.')
     console.log('Committed gif blobs live in git history permanently; check the list above first.')
+    // Spell out the next command rather than leaving it as an exercise, with
+    // the key redacted so it doesn't get echoed into a terminal log.
+    const echoed = process.argv.slice(2).map((a, i, all) => (all[i - 1] === '--api-key' ? '<key>' : a))
+    console.log(`\nTo import for real:\n  npm run import -- ${echoed.join(' ')} --commit`)
     return
   }
   if (plan.length === 0) {
