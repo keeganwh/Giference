@@ -4902,7 +4902,7 @@
     },
     {
       "id": "y7djc4gf5",
-      "name": "Thank You (Sarcastic)",
+      "name": "Hopper - Thank You (Uncertain / Sarcastic)",
       "filename": "thank-you.gif",
       "path": "gifs/robin-hopper-reacts-st7u/thank-you.gif",
       "thumbPath": "thumbs/robin-hopper-reacts-st7u/thank-you.webp",
@@ -4910,7 +4910,8 @@
       "tags": [
         "reactions",
         "specific",
-        "sarcasm"
+        "sarcasm",
+        "uncertain"
       ],
       "description": "Thank You?",
       "favorite": false,
