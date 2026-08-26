@@ -4902,16 +4902,17 @@
     },
     {
       "id": "y7djc4gf5",
-      "name": "Thank You",
+      "name": "Thank You (Sarcastic)",
       "filename": "thank-you.gif",
       "path": "gifs/robin-hopper-reacts-st7u/thank-you.gif",
       "thumbPath": "thumbs/robin-hopper-reacts-st7u/thank-you.webp",
       "library": "robin-hopper-reacts-st7u",
       "tags": [
         "reactions",
-        "specific"
+        "specific",
+        "sarcasm"
       ],
-      "description": "",
+      "description": "Thank You?",
       "favorite": false,
       "durationMs": 2380,
       "frameCount": 34,
